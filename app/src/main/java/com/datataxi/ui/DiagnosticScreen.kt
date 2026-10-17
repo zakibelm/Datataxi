@@ -2,6 +2,8 @@ package com.datataxi.ui
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +42,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private enum class PendingExport { CSV_ALL, CSV_NEW, JOURNAL }
+
 @Composable
 fun DiagnosticScreen() {
     val context = LocalContext.current
@@ -54,6 +58,37 @@ fun DiagnosticScreen() {
 
     var confirmClear by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    var pendingExport by remember { mutableStateOf(PendingExport.CSV_ALL) }
+    var exportedCount by remember { mutableStateOf(JournalExporter.exportedCount(context)) }
+    var lastExportLabel by remember { mutableStateOf(JournalExporter.lastExportLabel(context)) }
+
+    fun finishExport(uri: android.net.Uri?, content: String, markTotal: Int?) {
+        if (uri == null) return
+        if (JournalExporter.write(context, uri, content)) {
+            if (markTotal != null) {
+                JournalExporter.markExported(context, markTotal)
+                exportedCount = markTotal
+            }
+            lastExportLabel = JournalExporter.lastExportLabel(context)
+            exportMessage = "Fichier enregistré."
+        } else {
+            exportMessage = "Échec de l'enregistrement. Réessaie ou utilise « Partager »."
+        }
+    }
+
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val all = JournalStore.entries.value
+        val part = if (pendingExport == PendingExport.CSV_NEW)
+            all.drop(exportedCount.coerceAtMost(all.size)) else all
+        finishExport(uri, JournalExporter.buildCsv(part), all.size)
+    }
+    val txtLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        finishExport(uri, JournalExporter.buildJournalText(JournalStore.entries.value), null)
+    }
 
     Column(
         modifier = Modifier
@@ -157,16 +192,33 @@ fun DiagnosticScreen() {
                     )
                 }
 
+                Text("Export & Partage", style = MaterialTheme.typography.titleSmall)
+                val newCount = journal.size - exportedCount.coerceAtMost(journal.size)
                 Button(
                     onClick = {
-                        val name = JournalExporter.saveToDownloads(context, journal)
-                        exportMessage = if (name != null)
-                            "Enregistré dans Téléchargements : $name (ouvre « Mes fichiers » > Téléchargements)"
-                        else "Échec de l'enregistrement. Utilise « Partager »."
+                        pendingExport = PendingExport.CSV_ALL
+                        csvLauncher.launch("DataTaxi_historique_${JournalExporter.fileStamp()}.csv")
                     },
                     enabled = journal.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Enregistrer en CSV dans Téléchargements") }
+                ) { Text("Exporter l'historique CSV") }
+                OutlinedButton(
+                    onClick = {
+                        pendingExport = PendingExport.CSV_NEW
+                        csvLauncher.launch("DataTaxi_nouveautes_${JournalExporter.fileStamp()}.csv")
+                    },
+                    enabled = newCount > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Exporter seulement les nouveautés ($newCount)") }
+                OutlinedButton(
+                    onClick = {
+                        pendingExport = PendingExport.JOURNAL
+                        txtLauncher.launch("DataTaxi_journal_${JournalExporter.fileStamp()}.txt")
+                    },
+                    enabled = journal.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Exporter les anomalies / journal") }
+                Text(lastExportLabel, style = MaterialTheme.typography.bodySmall)
                 exportMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
                 when (backfill.phase) {
@@ -212,6 +264,9 @@ fun DiagnosticScreen() {
                         onClick = {
                             if (confirmClear) {
                                 JournalStore.clear()
+                                JournalExporter.resetMarkers(context)
+                                exportedCount = 0
+                                lastExportLabel = JournalExporter.lastExportLabel(context)
                                 confirmClear = false
                             } else {
                                 confirmClear = true

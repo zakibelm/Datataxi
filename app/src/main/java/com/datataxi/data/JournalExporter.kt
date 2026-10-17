@@ -1,53 +1,99 @@
 package com.datataxi.data
 
-import android.content.ContentValues
 import android.content.Context
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
+import android.net.Uri
 import com.datataxi.domain.JournalEntry
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Écrit le journal dans un fichier CSV visible dans « Mes fichiers > Téléchargements ». */
+/**
+ * Export fidèle pour Zone Predict : aucune prédiction, aucune donnée inventée.
+ * Les colonnes que l'app ne sait pas encore décoder restent vides (jamais de zéro factice).
+ */
 object JournalExporter {
 
-    /** CSV : date, heure, événement. Du plus ancien au plus récent, UTF-8 avec BOM (accents OK dans Excel). */
-    fun buildCsv(entries: List<JournalEntry>): String = buildString {
-        append('﻿')
-        append("date,heure,evenement\n")
-        entries
-            .sortedWith(compareBy<JournalEntry> { it.date }.thenBy { it.time })
-            .forEach { e ->
-                val time = e.text.take(8)
-                val event = e.text.drop(8).trim().replace("\"", "\"\"")
-                append(e.date).append(',').append(time).append(",\"").append(event).append("\"\n")
-            }
-    }
+    private const val PREFS = "datataxi_export"
+    private const val KEY_EXPORTED_COUNT = "exported_count"
+    private const val KEY_LAST_EXPORT = "last_export_millis"
 
-    /** Retourne le nom du fichier créé dans Téléchargements, ou null si l'écriture a échoué. */
-    fun saveToDownloads(context: Context, entries: List<JournalEntry>): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
-        val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.CANADA).format(Date())
-        val name = "DataTaxi_journal_$stamp.csv"
-        return try {
-            val resolver = context.contentResolver
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, name)
-                put(MediaStore.Downloads.MIME_TYPE, "text/csv")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-            resolver.openOutputStream(uri)?.use { it.write(buildCsv(entries).toByteArray(Charsets.UTF_8)) }
-                ?: return null
-            values.clear()
-            values.put(MediaStore.Downloads.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-            name
-        } catch (_: Exception) {
-            null
+    const val HEADER =
+        "trip_id,trip_date,trip_time,observed_at,departure_zone,departure_address," +
+            "destination_zone,destination_address,service_type,vehicle_id,current_status," +
+            "confidence_score,raw_text"
+
+    private fun sha(text: String): String =
+        MessageDigest.getInstance("SHA-1").digest(text.toByteArray())
+            .joinToString("") { "%02x".format(it) }.take(12)
+
+    private fun q(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
+
+    private fun ordered(entries: List<JournalEntry>) =
+        entries.sortedWith(compareBy<JournalEntry> { it.date }.thenBy { it.time })
+
+    /** CSV UTF-8 (BOM pour Excel/Sheets). trip_id = empreinte stable de date+texte. */
+    fun buildCsv(entries: List<JournalEntry>): String = buildString {
+        append('﻿').append(HEADER).append('\n')
+        ordered(entries).forEach { e ->
+            val time = e.text.take(8)
+            append(sha(e.key)).append(',')
+            append(e.date).append(',')
+            append(time).append(',')
+            append(e.date).append('T').append(time).append(',')
+            append(",,,,,,,")            // zones, adresses, service, véhicule, statut : non décodés
+            append(',')                  // confidence_score vide tant que rien n'est décodé
+            append(q(e.text)).append('\n')
         }
     }
+
+    /** Journal technique lisible (lignes brutes + statistiques de couverture). */
+    fun buildJournalText(entries: List<JournalEntry>): String = buildString {
+        val sorted = ordered(entries)
+        appendLine("DataTaxi - journal / anomalies")
+        appendLine("Lignes : ${sorted.size}")
+        val perDay = sorted.groupBy { it.date }
+        perDay.forEach { (d, list) ->
+            appendLine("$d : ${list.size} lignes, de ${list.first().time} à ${list.last().time}")
+        }
+        appendLine("Anomalies détectées : aucune détection automatique pour l'instant.")
+        appendLine()
+        sorted.forEach { appendLine("${it.date} ${it.text}") }
+    }
+
+    fun write(context: Context, uri: Uri, content: String): Boolean = try {
+        context.contentResolver.openOutputStream(uri, "wt")?.use {
+            it.write(content.toByteArray(Charsets.UTF_8))
+        } != null
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Les lignes s'ajoutent toujours à la fin : un simple compteur suffit pour « nouveautés ». */
+    fun exportedCount(context: Context): Int = prefs(context).getInt(KEY_EXPORTED_COUNT, 0)
+
+    fun lastExportMillis(context: Context): Long = prefs(context).getLong(KEY_LAST_EXPORT, 0L)
+
+    fun markExported(context: Context, total: Int) {
+        prefs(context).edit()
+            .putInt(KEY_EXPORTED_COUNT, total)
+            .putLong(KEY_LAST_EXPORT, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun resetMarkers(context: Context) {
+        prefs(context).edit().remove(KEY_EXPORTED_COUNT).remove(KEY_LAST_EXPORT).apply()
+    }
+
+    fun lastExportLabel(context: Context): String {
+        val t = lastExportMillis(context)
+        return if (t == 0L) "Aucun export réussi pour l'instant."
+        else "Dernier export réussi : " +
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CANADA).format(Date(t))
+    }
+
+    fun fileStamp(): String = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.CANADA).format(Date())
 }
