@@ -1,6 +1,7 @@
 package com.datataxi.data
 
 import android.content.Context
+import com.datataxi.domain.BackfillState
 import com.datataxi.domain.CaptureSnapshot
 import com.datataxi.util.Constants
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,9 @@ object CaptureStore {
     private val _snapshot = MutableStateFlow<CaptureSnapshot?>(null)
     val snapshot: StateFlow<CaptureSnapshot?> = _snapshot.asStateFlow()
 
+    private val _backfill = MutableStateFlow(BackfillState())
+    val backfill: StateFlow<BackfillState> = _backfill.asStateFlow()
+
     @Volatile
     private var loaded = false
 
@@ -38,6 +42,7 @@ object CaptureStore {
 
     fun setServiceConnected(connected: Boolean) {
         _serviceConnected.value = connected
+        if (!connected) _backfill.value = BackfillState()
     }
 
     fun setTarget(context: Context, packageName: String?) {
@@ -65,5 +70,9 @@ object CaptureStore {
 
     fun updateSnapshot(snapshot: CaptureSnapshot) {
         _snapshot.value = snapshot
+    }
+
+    fun setBackfill(state: BackfillState) {
+        _backfill.value = state
     }
 }

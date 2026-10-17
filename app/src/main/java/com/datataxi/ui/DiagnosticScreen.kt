@@ -20,6 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +31,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.datataxi.data.CaptureStore
+import com.datataxi.data.JournalStore
+import com.datataxi.domain.BackfillPhase
+import com.datataxi.domain.BackfillState
 import com.datataxi.util.Constants
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,6 +48,10 @@ fun DiagnosticScreen() {
     val target by CaptureStore.targetPackage.collectAsState()
     val recent by CaptureStore.recentPackages.collectAsState()
     val snapshot by CaptureStore.snapshot.collectAsState()
+    val backfill by CaptureStore.backfill.collectAsState()
+    val journal by JournalStore.entries.collectAsState()
+
+    var confirmClear by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -52,7 +62,7 @@ fun DiagnosticScreen() {
     ) {
         Text("DataTaxi", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Test de lecture de l'écran de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
+            "Lecture de l'écran de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -119,10 +129,85 @@ fun DiagnosticScreen() {
             }
         }
 
-        // 3. Dernière capture
+        // 3. Journal cumulatif
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("3. Dernière capture", style = MaterialTheme.typography.titleMedium)
+                Text("3. Journal des événements", style = MaterialTheme.typography.titleMedium)
+                Text("${journal.size} lignes enregistrées, sans doublons, sur cette tablette.")
+                Text(backfillStatus(backfill), style = MaterialTheme.typography.bodySmall)
+
+                when (backfill.phase) {
+                    BackfillPhase.IDLE, BackfillPhase.DONE -> Button(
+                        onClick = {
+                            CaptureStore.setBackfill(
+                                BackfillState(
+                                    BackfillPhase.ARMED,
+                                    message = "Ouvre maintenant Favoris, à l'arrêt : le défilement démarre tout seul.",
+                                )
+                            )
+                        },
+                        enabled = connected && target != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Récupérer l'historique de Favoris") }
+
+                    BackfillPhase.ARMED, BackfillPhase.RUNNING -> OutlinedButton(
+                        onClick = { CaptureStore.setBackfill(BackfillState()) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Arrêter") }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { clipboard.setText(AnnotatedString(JournalStore.exportText())) },
+                        enabled = journal.isNotEmpty(),
+                    ) { Text("Copier tout") }
+                    OutlinedButton(
+                        onClick = {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Journal DataTaxi")
+                                putExtra(Intent.EXTRA_TEXT, JournalStore.exportText())
+                            }
+                            context.startActivity(
+                                Intent.createChooser(send, "Partager le journal")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        enabled = journal.isNotEmpty(),
+                    ) { Text("Partager") }
+                    OutlinedButton(
+                        onClick = {
+                            if (confirmClear) {
+                                JournalStore.clear()
+                                confirmClear = false
+                            } else {
+                                confirmClear = true
+                            }
+                        },
+                        enabled = journal.isNotEmpty() || confirmClear,
+                    ) { Text(if (confirmClear) "Confirmer ?" else "Vider") }
+                }
+
+                if (journal.isNotEmpty()) {
+                    val preview = remember(journal) {
+                        JournalStore.sortedNewestFirst().take(Constants.JOURNAL_PREVIEW_LINES)
+                    }
+                    Text("Dernières lignes :", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(
+                            preview.joinToString("\n") { "${it.date} ${it.text}" },
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. Dernière capture
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("4. Dernière capture", style = MaterialTheme.typography.titleMedium)
                 val snap = snapshot
                 if (snap == null) {
                     Text("Aucune capture. Ouvre l'application cible, laisse l'écran des assignations visible quelques secondes, puis reviens ici.")
@@ -161,4 +246,10 @@ fun DiagnosticScreen() {
             }
         }
     }
+}
+
+private fun backfillStatus(state: BackfillState): String = when (state.phase) {
+    BackfillPhase.IDLE ->
+        "Les nouvelles lignes s'ajoutent toutes seules tant que Favoris est ouvert au premier plan. Pour récupérer aussi les plus anciennes, appuie sur le bouton ci-dessous puis ouvre Favoris."
+    else -> state.message
 }
