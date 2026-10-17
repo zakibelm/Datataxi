@@ -1,0 +1,164 @@
+package com.datataxi.ui
+
+import android.content.Intent
+import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.datataxi.data.CaptureStore
+import com.datataxi.util.Constants
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+@Composable
+fun DiagnosticScreen() {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+
+    val connected by CaptureStore.serviceConnected.collectAsState()
+    val target by CaptureStore.targetPackage.collectAsState()
+    val recent by CaptureStore.recentPackages.collectAsState()
+    val snapshot by CaptureStore.snapshot.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("DataTaxi", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            "Test de lecture de l'écran de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+
+        // 1. Service d'accessibilité
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (connected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.errorContainer,
+            ),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("1. Service d'accessibilité", style = MaterialTheme.typography.titleMedium)
+                Text(if (connected) "ACTIF" else "INACTIF")
+                if (!connected) {
+                    Text(
+                        "Si l'interrupteur est grisé : Paramètres > Applications > DataTaxi > menu ⋮ > « Autoriser les paramètres restreints », puis réessaie.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Ouvrir les paramètres d'accessibilité") }
+            }
+        }
+
+        // 2. Application cible
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("2. Application cible", style = MaterialTheme.typography.titleMedium)
+                Text("Cible actuelle : ${target ?: "aucune"}")
+                Text(
+                    "Ouvre l'application de répartition, reviens ici, puis choisis-la dans la liste (la plus récente est en haut). Seul son nom est retenu avant que tu la choisisses.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (recent.isEmpty()) {
+                    Text("Aucune application détectée pour l'instant.")
+                }
+                recent.forEach { pkg ->
+                    if (pkg == target) {
+                        Button(
+                            onClick = {},
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("✓ $pkg") }
+                    } else {
+                        OutlinedButton(
+                            onClick = { CaptureStore.setTarget(context, pkg) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(pkg) }
+                    }
+                }
+                if (target != null) {
+                    OutlinedButton(
+                        onClick = { CaptureStore.setTarget(context, null) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Retirer la cible") }
+                }
+            }
+        }
+
+        // 3. Dernière capture
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("3. Dernière capture", style = MaterialTheme.typography.titleMedium)
+                val snap = snapshot
+                if (snap == null) {
+                    Text("Aucune capture. Ouvre l'application cible, laisse l'écran des assignations visible quelques secondes, puis reviens ici.")
+                } else {
+                    val stamp = SimpleDateFormat("HH:mm:ss", Locale.CANADA)
+                        .format(Date(snap.capturedAtMillis))
+                    Text(
+                        if (snap.lines.isEmpty()) "FAIL probable : écran lu à $stamp mais aucun texte trouvé."
+                        else "PASS : ${snap.lines.size} éléments lus à $stamp.",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            clipboard.setText(AnnotatedString(snap.toPlainText()))
+                        }) { Text("Copier") }
+                        OutlinedButton(onClick = {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Capture DataTaxi")
+                                putExtra(Intent.EXTRA_TEXT, snap.toPlainText())
+                            }
+                            context.startActivity(
+                                Intent.createChooser(send, "Partager la capture")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }) { Text("Partager") }
+                    }
+                    SelectionContainer {
+                        Text(
+                            snap.toPlainText(Constants.MAX_LINES_DISPLAYED),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

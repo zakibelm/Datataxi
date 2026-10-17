@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DataTaxi</string>
+    <string name="accessibility_description">Lit le texte affiché par l\'application de répartition choisie, uniquement sur cette tablette, pour alimenter l\'analyse des assignations.</string>
+</resources>
