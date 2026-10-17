@@ -18,6 +18,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalExporter
 import com.datataxi.data.JournalStore
+import com.datataxi.data.SyncManager
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
 import com.datataxi.util.Constants
@@ -58,6 +60,11 @@ fun DiagnosticScreen() {
 
     var confirmClear by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    var syncUrl by remember { mutableStateOf(SyncManager.url(context)) }
+    var syncToken by remember { mutableStateOf(SyncManager.token(context)) }
+    var syncEnabled by remember { mutableStateOf(SyncManager.enabled(context)) }
+    var syncBusy by remember { mutableStateOf(false) }
+    var syncStatus by remember { mutableStateOf(SyncManager.statusLabel(context)) }
     var pendingExport by remember { mutableStateOf(PendingExport.CSV_ALL) }
     var exportedCount by remember { mutableStateOf(JournalExporter.exportedCount(context)) }
     var lastExportLabel by remember { mutableStateOf(JournalExporter.lastExportLabel(context)) }
@@ -265,6 +272,8 @@ fun DiagnosticScreen() {
                             if (confirmClear) {
                                 JournalStore.clear()
                                 JournalExporter.resetMarkers(context)
+                                SyncManager.resetSent(context)
+                                syncStatus = SyncManager.statusLabel(context)
                                 exportedCount = 0
                                 lastExportLabel = JournalExporter.lastExportLabel(context)
                                 confirmClear = false
@@ -275,6 +284,68 @@ fun DiagnosticScreen() {
                         enabled = journal.isNotEmpty() || confirmClear,
                     ) { Text(if (confirmClear) "Confirmer ?" else "Vider") }
                 }
+            }
+        }
+
+        // Envoi automatique vers n8n
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Envoi automatique (n8n)", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Les nouvelles lignes sont envoyées au webhook toutes les heures (quand il y a du réseau). Les lignes déjà envoyées ne sont jamais renvoyées.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = syncUrl,
+                    onValueChange = { syncUrl = it },
+                    label = { Text("Adresse du webhook (https://...)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = syncToken,
+                    onValueChange = { syncToken = it },
+                    label = { Text("Mot de passe secret") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    if (syncEnabled) "Envoi horaire : ACTIVÉ" else "Envoi horaire : désactivé",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            SyncManager.save(context, syncUrl, syncToken)
+                            SyncManager.enable(context)
+                            syncEnabled = true
+                            syncStatus = "Réglages enregistrés, envoi horaire activé."
+                        },
+                        enabled = syncUrl.startsWith("https://"),
+                    ) { Text("Enregistrer et activer") }
+                    OutlinedButton(
+                        onClick = {
+                            SyncManager.disable(context)
+                            syncEnabled = false
+                        },
+                        enabled = syncEnabled,
+                    ) { Text("Désactiver") }
+                }
+                OutlinedButton(
+                    onClick = {
+                        SyncManager.save(context, syncUrl, syncToken)
+                        syncBusy = true
+                        syncStatus = "Envoi en cours..."
+                        Thread {
+                            val r = SyncManager.sendNow(context)
+                            syncStatus = r.message
+                            syncBusy = false
+                        }.start()
+                    },
+                    enabled = syncUrl.startsWith("https://") && !syncBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Envoyer maintenant") }
+                Text(syncStatus, style = MaterialTheme.typography.bodySmall)
             }
         }
 

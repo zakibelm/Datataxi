@@ -55,6 +55,27 @@ object JournalExporter {
         }
     }
 
+    /** Une ligne du journal sous forme de champs nommés (mêmes colonnes que le CSV). */
+    fun record(e: JournalEntry): Map<String, String> {
+        val time = e.text.take(8)
+        val d = EventDecoder.decode(e.text)
+        return linkedMapOf(
+            "trip_id" to sha(e.key),
+            "trip_date" to e.date,
+            "trip_time" to time,
+            "observed_at" to "${e.date}T$time",
+            "departure_zone" to d.departureZone.orEmpty(),
+            "departure_address" to "",
+            "destination_zone" to d.destinationZone.orEmpty(),
+            "destination_address" to "",
+            "service_type" to d.serviceType.orEmpty(),
+            "vehicle_id" to d.vehicleId.orEmpty(),
+            "current_status" to d.status.orEmpty(),
+            "confidence_score" to d.confidence?.toString().orEmpty(),
+            "raw_text" to e.text,
+        )
+    }
+
     /** Journal technique lisible (lignes brutes + statistiques de couverture). */
     fun buildJournalText(entries: List<JournalEntry>): String = buildString {
         val sorted = ordered(entries)

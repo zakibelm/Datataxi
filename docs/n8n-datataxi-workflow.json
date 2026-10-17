@@ -1,0 +1,190 @@
+{
+ "name": "DataTaxi - Réception vers Google Sheet",
+ "nodes": [
+  {
+   "parameters": {
+    "httpMethod": "POST",
+    "path": "datataxi",
+    "responseMode": "responseNode",
+    "options": {}
+   },
+   "id": "n1",
+   "name": "Webhook DataTaxi",
+   "type": "n8n-nodes-base.webhook",
+   "typeVersion": 2,
+   "position": [
+    0,
+    0
+   ],
+   "webhookId": "datataxi-intake"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "strict"
+     },
+     "conditions": [
+      {
+       "id": "c1",
+       "leftValue": "={{ $json.body.token }}",
+       "rightValue": "dt-0fa420364a2d7475",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "n2",
+   "name": "Mot de passe correct ?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "fieldToSplitOut": "body.rows",
+    "options": {}
+   },
+   "id": "n3",
+   "name": "Une ligne par course",
+   "type": "n8n-nodes-base.splitOut",
+   "typeVersion": 1,
+   "position": [
+    440,
+    -100
+   ]
+  },
+  {
+   "parameters": {
+    "operation": "appendOrUpdate",
+    "documentId": {
+     "__rl": true,
+     "value": "1Sc9q6xj4ueDbzZeNFc4LVgCVQ5qNsCYrN8elmn-FN58",
+     "mode": "id"
+    },
+    "sheetName": {
+     "__rl": true,
+     "value": "gid=0",
+     "mode": "id"
+    },
+    "columns": {
+     "mappingMode": "autoMapInputData",
+     "value": {},
+     "matchingColumns": [
+      "trip_id"
+     ],
+     "schema": []
+    },
+    "options": {}
+   },
+   "id": "n4",
+   "name": "Ajouter au Google Sheet",
+   "type": "n8n-nodes-base.googleSheets",
+   "typeVersion": 4.5,
+   "position": [
+    660,
+    -100
+   ]
+  },
+  {
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ {\"ok\": true} }}",
+    "options": {
+     "responseCode": 200
+    }
+   },
+   "id": "n5",
+   "name": "Répondre OK",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    880,
+    -100
+   ],
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "respondWith": "json",
+    "responseBody": "={{ {\"ok\": false} }}",
+    "options": {
+     "responseCode": 401
+    }
+   },
+   "id": "n6",
+   "name": "Répondre refus",
+   "type": "n8n-nodes-base.respondToWebhook",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    120
+   ]
+  }
+ ],
+ "connections": {
+  "Webhook DataTaxi": {
+   "main": [
+    [
+     {
+      "node": "Mot de passe correct ?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mot de passe correct ?": {
+   "main": [
+    [
+     {
+      "node": "Une ligne par course",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Répondre refus",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Une ligne par course": {
+   "main": [
+    [
+     {
+      "node": "Ajouter au Google Sheet",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Ajouter au Google Sheet": {
+   "main": [
+    [
+     {
+      "node": "Répondre OK",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}
