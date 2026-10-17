@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.datataxi.data.CaptureStore
+import com.datataxi.data.JournalExporter
 import com.datataxi.data.JournalStore
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
@@ -52,6 +53,7 @@ fun DiagnosticScreen() {
     val journal by JournalStore.entries.collectAsState()
 
     var confirmClear by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -136,6 +138,37 @@ fun DiagnosticScreen() {
                 Text("${journal.size} lignes enregistrées, sans doublons, sur cette tablette.")
                 Text(backfillStatus(backfill), style = MaterialTheme.typography.bodySmall)
 
+                if (journal.isNotEmpty()) {
+                    val preview = remember(journal) {
+                        JournalStore.sortedNewestFirst().take(Constants.JOURNAL_PREVIEW_LINES)
+                    }
+                    Text("Dernières lignes :", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(
+                            preview.joinToString("\n") { "${it.date} ${it.text}" },
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Aucune ligne d'événement reconnue pour l'instant. Ouvre Favoris : les lignes au format « 12:34:56 ... » seront ajoutées ici.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val name = JournalExporter.saveToDownloads(context, journal)
+                        exportMessage = if (name != null)
+                            "Enregistré dans Téléchargements : $name (ouvre « Mes fichiers » > Téléchargements)"
+                        else "Échec de l'enregistrement. Utilise « Partager »."
+                    },
+                    enabled = journal.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Enregistrer en CSV dans Téléchargements") }
+                exportMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
                 when (backfill.phase) {
                     BackfillPhase.IDLE, BackfillPhase.DONE -> Button(
                         onClick = {
@@ -186,20 +219,6 @@ fun DiagnosticScreen() {
                         },
                         enabled = journal.isNotEmpty() || confirmClear,
                     ) { Text(if (confirmClear) "Confirmer ?" else "Vider") }
-                }
-
-                if (journal.isNotEmpty()) {
-                    val preview = remember(journal) {
-                        JournalStore.sortedNewestFirst().take(Constants.JOURNAL_PREVIEW_LINES)
-                    }
-                    Text("Dernières lignes :", style = MaterialTheme.typography.labelMedium)
-                    SelectionContainer {
-                        Text(
-                            preview.joinToString("\n") { "${it.date} ${it.text}" },
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                        )
-                    }
                 }
             }
         }
