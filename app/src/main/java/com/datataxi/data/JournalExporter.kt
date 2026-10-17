@@ -2,6 +2,7 @@ package com.datataxi.data
 
 import android.content.Context
 import android.net.Uri
+import com.datataxi.domain.EventDecoder
 import com.datataxi.domain.JournalEntry
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -41,8 +42,15 @@ object JournalExporter {
             append(e.date).append(',')
             append(time).append(',')
             append(e.date).append('T').append(time).append(',')
-            append(",,,,,,,")            // zones, adresses, service, véhicule, statut : non décodés
-            append(',')                  // confidence_score vide tant que rien n'est décodé
+            val d = EventDecoder.decode(e.text)
+            append(d.departureZone.orEmpty()).append(',')
+            append(',')                                   // departure_address : absente de Fraxion
+            append(d.destinationZone.orEmpty()).append(',')
+            append(',')                                   // destination_address : absente de Fraxion
+            append(q(d.serviceType.orEmpty())).append(',')
+            append(d.vehicleId.orEmpty()).append(',')
+            append(d.status.orEmpty()).append(',')
+            append(d.confidence?.toString().orEmpty()).append(',')
             append(q(e.text)).append('\n')
         }
     }
