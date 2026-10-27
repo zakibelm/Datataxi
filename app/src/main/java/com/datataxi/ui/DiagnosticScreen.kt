@@ -366,6 +366,8 @@ fun DiagnosticScreen() {
             }
         }
 
+        CompanionCard()
+
         // Journal de tous les écrans
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

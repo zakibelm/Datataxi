@@ -36,6 +36,9 @@ object AlertPlayer {
         speak(context.applicationContext, message)
     }
 
+    /** Dit une phrase sans signal sonore (réponses de l'avatar). */
+    fun say(context: Context, message: String) = speak(context.applicationContext, message)
+
     private fun beep() {
         try {
             val tone = ToneGenerator(AudioManager.STREAM_ALARM, ToneGenerator.MAX_VOLUME)
