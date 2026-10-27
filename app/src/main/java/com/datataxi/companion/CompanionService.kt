@@ -164,7 +164,9 @@ class CompanionService : Service() {
         val snap = CaptureStore.snapshot.value
         val mask = CompanionSettings.maskData(this)
         val lines = (snap?.lines?.map { it.text } ?: emptyList()).take(200).map { if (mask) Masking.mask(it) else it }
-        val provider = RelayProvider(CompanionSettings.relayUrl(this), CompanionSettings.token(this))
+        val provider: ChatProvider = if (CompanionSettings.provider(this) == "relay")
+            RelayProvider(CompanionSettings.relayUrl(this), CompanionSettings.token(this))
+        else OpenAiCompatProvider(CompanionSettings.relayUrl(this), CompanionSettings.token(this), CompanionSettings.model(this))
         thread {
             val r = provider.ask(if (mask) Masking.mask(q) else q, snap?.packageName ?: "", lines)
             ui.post {

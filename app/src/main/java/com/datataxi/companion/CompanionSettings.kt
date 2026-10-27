@@ -12,6 +12,13 @@ object CompanionSettings {
     fun speak(c: Context): Boolean = p(c).getBoolean("speak", true)
     fun maskData(c: Context): Boolean = p(c).getBoolean("mask", true)
 
+    /** "relay" = Claude Code sur le VPS ; "omniroute" = serveur compatible OpenAI (OmniRoute). */
+    fun provider(c: Context): String = p(c).getString("provider", "omniroute") ?: "omniroute"
+    fun model(c: Context): String = p(c).getString("model", "") ?: ""
+    fun saveProvider(c: Context, provider: String, model: String) {
+        p(c).edit().putString("provider", provider).putString("model", model.trim()).apply()
+    }
+
     fun voiceMode(c: Context): Boolean = p(c).getBoolean("voice_mode", true)
     fun setVoiceMode(c: Context, on: Boolean) { p(c).edit().putBoolean("voice_mode", on).apply() }
 

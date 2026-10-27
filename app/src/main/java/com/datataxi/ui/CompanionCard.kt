@@ -41,6 +41,8 @@ fun CompanionCard() {
     var speak by remember { mutableStateOf(CompanionSettings.speak(context)) }
     var mask by remember { mutableStateOf(CompanionSettings.maskData(context)) }
     var voice by remember { mutableStateOf(CompanionSettings.voiceMode(context)) }
+    var provider by remember { mutableStateOf(CompanionSettings.provider(context)) }
+    var model by remember { mutableStateOf(CompanionSettings.model(context)) }
     var info by remember { mutableStateOf("") }
     val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         info = if (ok) "Micro autorisé. Touche l'avatar et parle." else "Micro refusé : la voix ne marchera pas."
@@ -64,7 +66,7 @@ fun CompanionCard() {
         onDispose { owner.lifecycle.removeObserver(obs) }
     }
 
-    fun save() = CompanionSettings.save(context, url, token, speak, mask)
+    fun save() { CompanionSettings.save(context, url, token, speak, mask); CompanionSettings.saveProvider(context, provider, model) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -74,7 +76,20 @@ fun CompanionCard() {
                     "Les réponses viennent de Claude Code sur ton serveur (relay/relay.js).",
                 style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedTextField(url, { url = it }, label = { Text("Adresse du relais (https://…)") },
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { provider = "omniroute" }, enabled = provider != "omniroute") { Text("OmniRoute") }
+                Button(onClick = { provider = "relay" }, enabled = provider != "relay") { Text("Claude Code (VPS)") }
+            }
+            Text(
+                if (provider == "omniroute") "Fournisseur : OmniRoute (compatible OpenAI). Adresse = ton OmniRoute en https, jeton = sa clé API."
+                else "Fournisseur : relais Claude Code sur le VPS (plan Claude).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (provider == "omniroute") {
+                OutlinedTextField(model, { model = it }, label = { Text("Modèle (gratuit ou local, ex. nom exact dans OmniRoute)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+            OutlinedTextField(url, { url = it }, label = { Text("Adresse (https://…)") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(token, { token = it }, label = { Text("Jeton") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
