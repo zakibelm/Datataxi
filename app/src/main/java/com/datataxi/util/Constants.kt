@@ -19,6 +19,10 @@ object Constants {
     const val BACKFILL_MAX_STEPS = 60
     const val BACKFILL_UNCHANGED_LIMIT = 2
 
+    /** Journal des écrans : limites pour ne jamais remplir la tablette. */
+    const val SCREEN_LOG_MAX_LINES = 300
+    const val SCREEN_LOG_MAX_BYTES = 8L * 1024 * 1024
+
     /** Paquets système jamais proposés comme cible. */
     val IGNORED_PACKAGES = setOf("com.android.systemui")
 }

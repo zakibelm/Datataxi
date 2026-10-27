@@ -8,6 +8,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalStore
+import com.datataxi.data.ScreenLogStore
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
 import com.datataxi.domain.CaptureSnapshot
@@ -23,6 +24,9 @@ class DataTaxiAccessibilityService : AccessibilityService() {
     private var lastSignature: String? = null
     private var unchangedSteps = 0
 
+    /** Dernier nom de fenêtre vu dans l'application cible (écran courant). */
+    private var currentScreenId: String = UNKNOWN_SCREEN
+
     private class ReadResult(
         val root: AccessibilityNodeInfo,
         val events: List<String>,
@@ -33,6 +37,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
+        ScreenLogStore.init(applicationContext)
         CaptureStore.setServiceConnected(true)
     }
 
@@ -45,6 +50,11 @@ class DataTaxiAccessibilityService : AccessibilityService() {
 
         // Le contenu n'est lu que pour l'application cible choisie par l'utilisateur.
         if (pkg != CaptureStore.targetPackage.value) return
+
+        // Un changement de fenêtre = un nouvel écran : on retient son nom pour le journal des écrans.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            event.className?.toString()?.takeIf { it.isNotBlank() }?.let { currentScreenId = it }
+        }
 
         if (CaptureStore.backfill.value.phase == BackfillPhase.ARMED) startBackfill()
 
@@ -68,7 +78,13 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         )
         val events = JournalParser.eventLines(lines)
         val added = JournalStore.addAll(JournalStore.today(), events)
+        // Tous les écrans de l'application cible, pas seulement le journal d'événements.
+        ScreenLogStore.record(currentScreenId, lines.map { it.text })
         return ReadResult(root, events, added)
+    }
+
+    private companion object {
+        const val UNKNOWN_SCREEN = "écran inconnu"
     }
 
     private fun captureNow() {

@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalExporter
 import com.datataxi.data.JournalStore
+import com.datataxi.data.ScreenLogStore
 import com.datataxi.data.SyncManager
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
@@ -57,8 +58,10 @@ fun DiagnosticScreen() {
     val snapshot by CaptureStore.snapshot.collectAsState()
     val backfill by CaptureStore.backfill.collectAsState()
     val journal by JournalStore.entries.collectAsState()
+    val screenLog by ScreenLogStore.summary.collectAsState()
 
     var confirmClear by remember { mutableStateOf(false) }
+    var confirmClearScreens by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
     var syncUrl by remember { mutableStateOf(SyncManager.url(context)) }
     var syncToken by remember { mutableStateOf(SyncManager.token(context)) }
@@ -95,6 +98,12 @@ fun DiagnosticScreen() {
         ActivityResultContracts.CreateDocument("text/plain")
     ) { uri ->
         finishExport(uri, JournalExporter.buildJournalText(JournalStore.entries.value), null)
+    }
+
+    val screensLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        finishExport(uri, ScreenLogStore.exportText(), null)
     }
 
     Column(
@@ -283,6 +292,60 @@ fun DiagnosticScreen() {
                         },
                         enabled = journal.isNotEmpty() || confirmClear,
                     ) { Text(if (confirmClear) "Confirmer ?" else "Vider") }
+                }
+            }
+        }
+
+        // Journal de tous les écrans
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Journal de tous les écrans", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Chaque écran de l'application cible que tu ouvres est enregistré une fois, quand son contenu change. Navigue dans tous les écrans, à l'arrêt, pour les capter.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("${screenLog.total} écrans enregistrés sur cette tablette.")
+                if (screenLog.full) {
+                    Text(
+                        "Limite de stockage atteinte : exporte puis vide le journal pour reprendre l'enregistrement.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                screenLog.perScreen.entries.sortedByDescending { it.value }.take(12).forEach { (id, n) ->
+                    Text("$n × $id", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                }
+                Button(
+                    onClick = { screensLauncher.launch("DataTaxi_ecrans_${JournalExporter.fileStamp()}.txt") },
+                    enabled = screenLog.total > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Exporter les écrans") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Journal des écrans DataTaxi")
+                                putExtra(Intent.EXTRA_TEXT, ScreenLogStore.exportText())
+                            }
+                            context.startActivity(
+                                Intent.createChooser(send, "Partager les écrans")
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        enabled = screenLog.total > 0,
+                    ) { Text("Partager") }
+                    OutlinedButton(
+                        onClick = {
+                            if (confirmClearScreens) {
+                                ScreenLogStore.clear()
+                                confirmClearScreens = false
+                            } else {
+                                confirmClearScreens = true
+                            }
+                        },
+                        enabled = screenLog.total > 0 || confirmClearScreens,
+                    ) { Text(if (confirmClearScreens) "Confirmer ?" else "Vider") }
                 }
             }
         }

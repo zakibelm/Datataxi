@@ -9,12 +9,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalStore
+import com.datataxi.data.ScreenLogStore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
+        ScreenLogStore.init(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(
