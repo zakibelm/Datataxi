@@ -16,6 +16,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -35,6 +39,22 @@ fun CompanionCard() {
     var speak by remember { mutableStateOf(CompanionSettings.speak(context)) }
     var mask by remember { mutableStateOf(CompanionSettings.maskData(context)) }
     var info by remember { mutableStateOf("") }
+    var waitingPermission by remember { mutableStateOf(false) }
+
+    // Au retour des réglages, si l'autorisation est donnée, l'avatar démarre tout seul.
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_RESUME && waitingPermission) {
+                if (Settings.canDrawOverlays(context)) {
+                    waitingPermission = false; CompanionService.start(context)
+                    info = "Autorisation reçue : l'avatar est affiché (cherche-le sur le bord gauche de l'écran)."
+                } else info = "L'autorisation « Afficher par-dessus les autres applications » n'est pas encore donnée."
+            }
+        }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
 
     fun save() = CompanionSettings.save(context, url, token, speak, mask)
 
@@ -60,13 +80,14 @@ fun CompanionCard() {
                 Button(onClick = {
                     save()
                     if (!Settings.canDrawOverlays(context)) {
-                        info = "Autorise « Afficher par-dessus les autres applications », puis reviens."
+                        waitingPermission = true
+                        info = "Active « Afficher par-dessus les autres applications » pour DataTaxi, puis reviens ici."
                         context.startActivity(
                             Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         )
                     } else {
-                        CompanionService.start(context); info = "Avatar affiché."
+                        CompanionService.start(context); info = "Avatar affiché sur le bord gauche de l'écran, sous le haut."
                     }
                 }) { Text("Afficher l'avatar") }
                 OutlinedButton(onClick = { CompanionService.stop(context); info = "Avatar masqué." }) { Text("Masquer") }
