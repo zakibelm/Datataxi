@@ -3,6 +3,8 @@ package com.datataxi.ui
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,7 +40,13 @@ fun CompanionCard() {
     var token by remember { mutableStateOf(CompanionSettings.token(context)) }
     var speak by remember { mutableStateOf(CompanionSettings.speak(context)) }
     var mask by remember { mutableStateOf(CompanionSettings.maskData(context)) }
+    var voice by remember { mutableStateOf(CompanionSettings.voiceMode(context)) }
     var info by remember { mutableStateOf("") }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        info = if (ok) "Micro autorisé. Touche l'avatar et parle." else "Micro refusé : la voix ne marchera pas."
+        // Relance le service pour qu'il prenne le type « microphone » en arrière-plan.
+        if (Settings.canDrawOverlays(context)) { CompanionService.stop(context); CompanionService.start(context) }
+    }
     var waitingPermission by remember { mutableStateOf(false) }
 
     // Au retour des réglages, si l'autorisation est donnée, l'avatar démarre tout seul.
@@ -71,7 +79,12 @@ fun CompanionCard() {
             OutlinedTextField(token, { token = it }, label = { Text("Jeton") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Switch(speak, { speak = it }); Text("Lire les réponses à voix haute")
+                Switch(voice, { voice = it; CompanionSettings.setVoiceMode(context, it) })
+                Text("Mode voix mains libres (touche = il écoute, il répond, il réécoute)")
+            }
+            OutlinedButton(onClick = { micLauncher.launch(android.Manifest.permission.RECORD_AUDIO) }) { Text("Autoriser le micro") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(speak, { speak = it }); Text("Lire les réponses à voix haute (mode texte)")
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(mask, { mask = it }); Text("Masquer téléphones et courriels avant l'envoi")

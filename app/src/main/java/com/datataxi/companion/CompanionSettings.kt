@@ -12,6 +12,9 @@ object CompanionSettings {
     fun speak(c: Context): Boolean = p(c).getBoolean("speak", true)
     fun maskData(c: Context): Boolean = p(c).getBoolean("mask", true)
 
+    fun voiceMode(c: Context): Boolean = p(c).getBoolean("voice_mode", true)
+    fun setVoiceMode(c: Context, on: Boolean) { p(c).edit().putBoolean("voice_mode", on).apply() }
+
     fun save(c: Context, url: String, token: String, speak: Boolean, mask: Boolean) {
         p(c).edit().putString("relay_url", url.trim()).putString("token_enc", SecretBox.encrypt(token.trim())).remove("token")
             .putBoolean("speak", speak).putBoolean("mask", mask).apply()

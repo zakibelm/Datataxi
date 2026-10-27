@@ -5,7 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -64,13 +71,19 @@ class CompanionService : Service() {
         super.onCreate()
         instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        startForeground(NOTIF_ID, notification())
+        if (Build.VERSION.SDK_INT >= 34) {
+            var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            startForeground(NOTIF_ID, notification(), type)
+        } else startForeground(NOTIF_ID, notification())
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
         addBubble()
     }
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        stopListening()
         bubble?.let { runCatching { wm.removeView(it) } }
         panel?.let { runCatching { wm.removeView(it) } }
         super.onDestroy()
@@ -88,21 +101,22 @@ class CompanionService : Service() {
             dp(84), dp(84), overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START; x = dp(8); y = dp(160) }
-        var sx = 0; var sy = 0; var tx = 0f; var ty = 0f; var moved = false
+        var sx = 0; var sy = 0; var tx = 0f; var ty = 0f; var moved = false; var longPressed = false
+        val longPress = Runnable { longPressed = true; togglePanel() }
         b.setOnTouchListener { _, e ->
             when (e.action) {
-                MotionEvent.ACTION_DOWN -> { sx = lp.x; sy = lp.y; tx = e.rawX; ty = e.rawY; moved = false }
+                MotionEvent.ACTION_DOWN -> { sx = lp.x; sy = lp.y; tx = e.rawX; ty = e.rawY; moved = false; longPressed = false; ui.postDelayed(longPress, 650L) }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (e.rawX - tx).toInt(); val dy = (e.rawY - ty).toInt()
-                    if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) moved = true
+                    if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) { moved = true; ui.removeCallbacks(longPress) }
                     lp.x = sx + dx; lp.y = sy + dy; wm.updateViewLayout(b, lp)
                 }
-                MotionEvent.ACTION_UP -> if (!moved) {
+                MotionEvent.ACTION_UP -> { ui.removeCallbacks(longPress); if (!moved && !longPressed) {
                     val now = System.currentTimeMillis()
                     tapCount = if (now - lastTap < 700) tapCount + 1 else 1
                     lastTap = now
-                    if (tapCount >= 3) emote() else { b.setMood(MascotView.Mood.SURPRISED, 600); togglePanel() }
-                }
+                    if (tapCount >= 3) emote() else onBubbleTap()
+                } }
             }
             true
         }
@@ -118,7 +132,8 @@ class CompanionService : Service() {
         }
         val send = Button(this).apply { text = "Envoyer"; setOnClickListener { ask(field.text.toString()) } }
         val close = Button(this).apply { text = "Fermer"; setOnClickListener { closePanel() } }
-        val row = LinearLayout(this).apply { addView(send); addView(close) }
+        val mic = Button(this).apply { text = "🎤 Parler"; setOnClickListener { if (listening) stopListening() else startListening() } }
+        val row = LinearLayout(this).apply { addView(mic); addView(send); addView(close) }
         val p = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(12), dp(12), dp(12))
             background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(Color.parseColor("#F2263238")) }
@@ -140,7 +155,7 @@ class CompanionService : Service() {
         panel = null; answerView = null; input = null
     }
 
-    private fun ask(question: String) {
+    private fun ask(question: String, spoken: Boolean = false) {
         val q = question.trim()
         if (q.isEmpty()) return
         answerView?.text = "…"
@@ -155,13 +170,88 @@ class CompanionService : Service() {
             ui.post {
                 val text = r.getOrElse { "Erreur : ${it.message}" }
                 answerView?.text = text
-                if (r.isSuccess) {
+                if (!r.isSuccess) { bubble?.setMood(MascotView.Mood.SAD, 6000L); return@post }
+                val voiceMode = CompanionSettings.voiceMode(this)
+                if (spoken || CompanionSettings.speak(this)) {
+                    bubble?.setMood(MascotView.Mood.SPEAKING, 30_000L)
+                    AlertPlayer.say(this, text) {
+                        bubble?.setMood(MascotView.Mood.JOY, 1500L)
+                        // Mains libres : après la réponse, il se remet à l'écoute pour la suite de la conversation.
+                        if (spoken && voiceMode) ui.postDelayed({ startListening() }, 600L)
+                    }
+                } else {
                     bubble?.setMood(MascotView.Mood.SPEAKING, (text.length * 60L).coerceIn(1500L, 15000L))
-                    ui.postDelayed({ bubble?.setMood(MascotView.Mood.JOY, 2500L) }, (text.length * 60L).coerceIn(1500L, 15000L))
-                } else bubble?.setMood(MascotView.Mood.SAD, 6000L)
-                if (r.isSuccess && CompanionSettings.speak(this)) AlertPlayer.say(this, text)
+                }
             }
         }
+    }
+
+    // ---------- Voix ----------
+    private var recognizer: SpeechRecognizer? = null
+    private var listening = false
+
+    private fun onBubbleTap() {
+        if (CompanionSettings.voiceMode(this)) {
+            if (listening) stopListening() else startListening()
+        } else {
+            bubble?.setMood(MascotView.Mood.SURPRISED, 600L); togglePanel()
+        }
+    }
+
+    private fun say(msg: String) { answerView?.text = msg }
+
+    private fun startListening() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            say("Micro non autorisé : ouvre DataTaxi, carte « Avatar flottant », et autorise le micro.")
+            bubble?.setMood(MascotView.Mood.SAD, 4000L); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            say("Reconnaissance vocale absente sur cette tablette (installe/active l'application Google).")
+            bubble?.setMood(MascotView.Mood.SAD, 4000L); return
+        }
+        stopListening()
+        val rec = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = rec
+        rec.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { runCatching { android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 60).startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 120) } }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+            override fun onPartialResults(partialResults: Bundle?) {
+                partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { say(it) }
+            }
+            override fun onResults(results: Bundle?) {
+                listening = false
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (text.isNullOrBlank()) bubble?.setMood(MascotView.Mood.IDLE) else ask(text, spoken = true)
+            }
+            override fun onError(error: Int) {
+                listening = false
+                // Silence ou rien compris : fin de la conversation, sans bruit.
+                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    bubble?.setMood(MascotView.Mood.IDLE)
+                } else {
+                    say("Erreur micro ($error).")
+                    bubble?.setMood(MascotView.Mood.SAD, 3000L)
+                }
+            }
+        })
+        val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-CA")
+            .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+        listening = true
+        bubble?.setMood(MascotView.Mood.LISTENING, 0L)
+        rec.startListening(i)
+    }
+
+    private fun stopListening() {
+        listening = false
+        recognizer?.let { runCatching { it.cancel(); it.destroy() } }
+        recognizer = null
+        if (bubble?.mood == MascotView.Mood.LISTENING) bubble?.setMood(MascotView.Mood.IDLE)
     }
 
     private fun notification(): Notification {

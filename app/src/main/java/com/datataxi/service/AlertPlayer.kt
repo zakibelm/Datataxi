@@ -26,18 +26,25 @@ object AlertPlayer {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var pendingMessage: String? = null
+    private var sayDone: (() -> Unit)? = null
+    private var nextId = "datataxi_alert"
 
     private val _status = MutableStateFlow("")
     val status: StateFlow<String> = _status.asStateFlow()
 
     /** À appeler depuis le fil principal (service d'accessibilité ou bouton de test). */
     fun play(context: Context, message: String) {
+        nextId = "datataxi_alert"
         beep()
         speak(context.applicationContext, message)
     }
 
     /** Dit une phrase sans signal sonore (réponses de l'avatar). */
-    fun say(context: Context, message: String) = speak(context.applicationContext, message)
+    fun say(context: Context, message: String, onDone: (() -> Unit)? = null) {
+        sayDone = onDone
+        nextId = "datataxi_say"
+        speak(context.applicationContext, message)
+    }
 
     private fun beep() {
         try {
@@ -90,7 +97,18 @@ object AlertPlayer {
             val params = Bundle().apply {
                 putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_ALARM)
             }
-            engine.speak(message, TextToSpeech.QUEUE_FLUSH, params, "datataxi_alert")
+            engine.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+                override fun onDone(utteranceId: String?) = finishSay(utteranceId)
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) = finishSay(utteranceId)
+            })
+            engine.speak(message, TextToSpeech.QUEUE_FLUSH, params, nextId)
         }, SPEAK_DELAY_MS)
+    }
+
+    private fun finishSay(id: String?) {
+        if (id != "datataxi_say") return
+        handler.post { val cb = sayDone; sayDone = null; cb?.invoke() }
     }
 }

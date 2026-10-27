@@ -22,7 +22,7 @@ import kotlin.math.sin
  */
 class MascotView(context: Context) : View(context) {
 
-    enum class Mood { IDLE, THINKING, SPEAKING, JOY, EXCITED, SURPRISED, SAD, SLEEPY, WORRIED, LOVE }
+    enum class Mood { IDLE, THINKING, SPEAKING, JOY, EXCITED, SURPRISED, SAD, SLEEPY, WORRIED, LOVE, LISTENING }
 
     var mood: Mood = Mood.IDLE
         private set
@@ -183,7 +183,7 @@ class MascotView(context: Context) : View(context) {
                 oval.set(cx - r * big, cy + r * 0.12f, cx + r * big, cy + r * 0.12f + r * big * 2f)
                 path.reset(); path.addArc(oval, 0f, 180f); path.close(); c.drawPath(path, dark)
             }
-            Mood.THINKING -> c.drawCircle(cx, cy + r * 0.42f, r * 0.05f, dark)
+            Mood.THINKING, Mood.LISTENING -> c.drawCircle(cx, cy + r * 0.42f, r * 0.05f, dark)
             Mood.SURPRISED -> { oval.set(cx - r * 0.1f, cy + r * 0.3f, cx + r * 0.1f, cy + r * 0.58f); c.drawOval(oval, dark) }
             Mood.SAD -> { oval.set(cx - r * 0.13f, cy + r * 0.38f, cx + r * 0.13f, cy + r * 0.6f); c.drawArc(oval, 200f, 140f, false, line) }
             Mood.WORRIED -> {
@@ -200,6 +200,12 @@ class MascotView(context: Context) : View(context) {
 
         // --- accessoires d'humeur
         when (mood) {
+            Mood.LISTENING -> for (i in 0..1) {
+                val p = (t * 0.9f + i * 0.5f) % 1f
+                line.alpha = (200 * (1f - p)).toInt()
+                c.drawCircle(cx, cy, r * (1.05f + 0.35f * p), line)
+                line.alpha = 255
+            }
             Mood.THINKING -> for (i in 0..2) {
                 white.alpha = if (i <= (t * 3f).toInt() % 3) 255 else 70
                 c.drawCircle(cx + r * 0.75f + i * r * 0.22f, cy - r * 0.85f, r * 0.07f, white)
