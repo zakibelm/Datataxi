@@ -42,6 +42,7 @@ class CompanionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         startForeground(NOTIF_ID, notification())
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return }
@@ -49,6 +50,7 @@ class CompanionService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         bubble?.let { runCatching { wm.removeView(it) } }
         panel?.let { runCatching { wm.removeView(it) } }
         super.onDestroy()
@@ -75,7 +77,7 @@ class CompanionService : Service() {
                     if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) moved = true
                     lp.x = sx + dx; lp.y = sy + dy; wm.updateViewLayout(b, lp)
                 }
-                MotionEvent.ACTION_UP -> if (!moved) togglePanel()
+                MotionEvent.ACTION_UP -> if (!moved) { b.setMood(MascotView.Mood.SURPRISED, 600); togglePanel() }
             }
             true
         }
@@ -117,7 +119,7 @@ class CompanionService : Service() {
         val q = question.trim()
         if (q.isEmpty()) return
         answerView?.text = "…"
-        bubble?.mood = MascotView.Mood.THINKING
+        bubble?.setMood(MascotView.Mood.THINKING)
         input?.setText("")
         val snap = CaptureStore.snapshot.value
         val mask = CompanionSettings.maskData(this)
@@ -128,8 +130,10 @@ class CompanionService : Service() {
             ui.post {
                 val text = r.getOrElse { "Erreur : ${it.message}" }
                 answerView?.text = text
-                bubble?.mood = MascotView.Mood.SPEAKING
-                ui.postDelayed({ bubble?.mood = MascotView.Mood.IDLE }, (text.length * 60L).coerceIn(1500L, 15000L))
+                if (r.isSuccess) {
+                    bubble?.setMood(MascotView.Mood.SPEAKING, (text.length * 60L).coerceIn(1500L, 15000L))
+                    ui.postDelayed({ bubble?.setMood(MascotView.Mood.JOY, 2500L) }, (text.length * 60L).coerceIn(1500L, 15000L))
+                } else bubble?.setMood(MascotView.Mood.SAD, 6000L)
                 if (r.isSuccess && CompanionSettings.speak(this)) AlertPlayer.say(this, text)
             }
         }
@@ -145,6 +149,14 @@ class CompanionService : Service() {
     }
 
     companion object {
+        private var instance: CompanionService? = null
+
+        /** Fait réagir la mascotte depuis ailleurs dans l'app (ex. alerte « c'est l'heure »). */
+        fun react(mood: MascotView.Mood, forMs: Long) {
+            val svc = instance ?: return
+            svc.ui.post { svc.bubble?.setMood(mood, forMs) }
+        }
+
         private const val CHANNEL = "companion"
         private const val NOTIF_ID = 42
         fun start(c: Context) {

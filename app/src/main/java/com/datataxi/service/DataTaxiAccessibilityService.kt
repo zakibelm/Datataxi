@@ -122,6 +122,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         lastAlertAt = now
         AlertSettings.recordAlert(applicationContext, target, match)
         AlertPlayer.play(applicationContext, AlertSettings.message(applicationContext))
+        com.datataxi.companion.CompanionService.react(com.datataxi.companion.MascotView.Mood.EXCITED, 8000L)
     }
 
     private companion object {
