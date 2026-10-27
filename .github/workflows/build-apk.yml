@@ -42,3 +42,14 @@ jobs:
           name: DataTaxi - dernière version de test
           prerelease: true
           files: DataTaxi-debug.apk
+
+      # Version de test de la branche en cours : lien direct sans compte, même hors main.
+      - name: Publish branch APK as a test release
+        if: github.ref == 'refs/heads/feature/journal-ecrans'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-journal-ecrans
+          name: DataTaxi - version de test (journal des écrans + avatar)
+          prerelease: true
+          target_commitish: ${{ github.sha }}
+          files: DataTaxi-debug.apk
