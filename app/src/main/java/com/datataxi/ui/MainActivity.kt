@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.datataxi.data.AlertSettings
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalStore
 import com.datataxi.data.ScreenLogStore
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
         ScreenLogStore.init(applicationContext)
+        AlertSettings.init(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(

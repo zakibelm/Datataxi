@@ -4,11 +4,14 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.datataxi.data.AlertSettings
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalStore
 import com.datataxi.data.ScreenLogStore
+import com.datataxi.domain.AlertDetector
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
 import com.datataxi.domain.CaptureSnapshot
@@ -23,6 +26,10 @@ class DataTaxiAccessibilityService : AccessibilityService() {
 
     private var lastSignature: String? = null
     private var unchangedSteps = 0
+
+    /** Pour chaque application : le mot déclencheur était-il déjà affiché à la lecture précédente ? */
+    private val alertShown = HashMap<String, Boolean>()
+    private var lastAlertAt = 0L
 
     /** Dernier nom de fenêtre vu, pour chaque application cible. */
     private val currentScreens = HashMap<String, String>()
@@ -39,6 +46,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
         ScreenLogStore.init(applicationContext)
+        AlertSettings.init(applicationContext)
         CaptureStore.setServiceConnected(true)
     }
 
@@ -88,7 +96,32 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         // Tous les écrans de toutes les applications cibles, avec le nom de l'application.
         val screen = currentScreens[target] ?: UNKNOWN_SCREEN
         ScreenLogStore.record("$target › $screen", lines.map { it.text })
+        // Pas d'alerte pendant la récupération de l'historique : les vieilles lignes ne comptent pas.
+        if (CaptureStore.backfill.value.phase != BackfillPhase.RUNNING) {
+            checkAlert(target, lines.map { it.text })
+        }
         return ReadResult(root, events, added, journalApp)
+    }
+
+    /**
+     * Alerte « c'est l'heure » : se déclenche quand un mot déclencheur APPARAÎT à l'écran
+     * (pas tant qu'il y reste), avec un délai minimal entre deux alertes.
+     */
+    private fun checkAlert(target: String, texts: List<String>) {
+        if (!AlertSettings.enabled(applicationContext)) {
+            alertShown[target] = false
+            return
+        }
+        val match = AlertDetector.firstMatch(texts, AlertSettings.phrases(applicationContext))
+        val wasShown = alertShown[target] == true
+        alertShown[target] = match != null
+        if (match == null || wasShown) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (lastAlertAt != 0L && now - lastAlertAt < Constants.ALERT_COOLDOWN_MS) return
+        lastAlertAt = now
+        AlertSettings.recordAlert(applicationContext, target, match)
+        AlertPlayer.play(applicationContext, AlertSettings.message(applicationContext))
     }
 
     private companion object {

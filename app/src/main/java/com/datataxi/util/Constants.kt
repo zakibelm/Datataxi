@@ -27,6 +27,9 @@ object Constants {
     const val SCREEN_LOG_MAX_LINES = 300
     const val SCREEN_LOG_MAX_BYTES = 8L * 1024 * 1024
 
+    /** Alerte « c'est l'heure » : délai minimal entre deux alertes, pour éviter les répétitions. */
+    const val ALERT_COOLDOWN_MS = 10_000L
+
     /** Paquets système jamais proposés comme cible. */
     val IGNORED_PACKAGES = setOf("com.android.systemui")
 }

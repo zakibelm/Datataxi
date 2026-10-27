@@ -19,6 +19,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.datataxi.data.AlertSettings
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.JournalExporter
 import com.datataxi.data.JournalStore
@@ -40,6 +42,7 @@ import com.datataxi.data.ScreenLogStore
 import com.datataxi.data.SyncManager
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
+import com.datataxi.service.AlertPlayer
 import com.datataxi.util.Constants
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -59,6 +62,11 @@ fun DiagnosticScreen() {
     val backfill by CaptureStore.backfill.collectAsState()
     val journal by JournalStore.entries.collectAsState()
     val screenLog by ScreenLogStore.summary.collectAsState()
+    val lastAlert by AlertSettings.lastAlert.collectAsState()
+    val alertStatus by AlertPlayer.status.collectAsState()
+    var alertEnabled by remember { mutableStateOf(AlertSettings.enabled(context)) }
+    var alertPhrases by remember { mutableStateOf(AlertSettings.phrasesRaw(context)) }
+    var alertMessage by remember { mutableStateOf(AlertSettings.message(context)) }
 
     var confirmClear by remember { mutableStateOf(false) }
     var confirmClearScreens by remember { mutableStateOf(false) }
@@ -302,6 +310,58 @@ fun DiagnosticScreen() {
                         },
                         enabled = journal.isNotEmpty() || confirmClear,
                     ) { Text(if (confirmClear) "Confirmer ?" else "Vider") }
+                }
+            }
+        }
+
+        // Alerte « c'est l'heure »
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Alerte « c'est l'heure »", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Quand un de ces mots apparaît dans une application suivie, la tablette joue un signal sonore puis dit la phrase à voix haute (volume alarme).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Switch(
+                        checked = alertEnabled,
+                        onCheckedChange = {
+                            alertEnabled = it
+                            AlertSettings.setEnabled(context, it)
+                        },
+                    )
+                    Text(if (alertEnabled) "Alerte activée" else "Alerte désactivée")
+                }
+                OutlinedTextField(
+                    value = alertPhrases,
+                    onValueChange = { alertPhrases = it },
+                    label = { Text("Mots déclencheurs (séparés par des virgules)") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = alertMessage,
+                    onValueChange = { alertMessage = it },
+                    label = { Text("Phrase dite à voix haute") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        AlertSettings.save(context, alertPhrases, alertMessage)
+                        alertPhrases = AlertSettings.phrasesRaw(context)
+                        alertMessage = AlertSettings.message(context)
+                    }) { Text("Enregistrer") }
+                    OutlinedButton(onClick = {
+                        AlertPlayer.play(context, alertMessage.ifBlank { AlertSettings.DEFAULT_MESSAGE })
+                    }) { Text("Tester le son") }
+                }
+                Text(lastAlert, style = MaterialTheme.typography.bodySmall)
+                if (alertStatus.isNotEmpty()) {
+                    Text(
+                        alertStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
