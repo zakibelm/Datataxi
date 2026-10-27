@@ -24,13 +24,14 @@ class DataTaxiAccessibilityService : AccessibilityService() {
     private var lastSignature: String? = null
     private var unchangedSteps = 0
 
-    /** Dernier nom de fenêtre vu dans l'application cible (écran courant). */
-    private var currentScreenId: String = UNKNOWN_SCREEN
+    /** Dernier nom de fenêtre vu, pour chaque application cible. */
+    private val currentScreens = HashMap<String, String>()
 
     private class ReadResult(
         val root: AccessibilityNodeInfo,
         val events: List<String>,
         val added: Int,
+        val isJournalApp: Boolean,
     )
 
     override fun onServiceConnected() {
@@ -49,24 +50,29 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         CaptureStore.noteForegroundPackage(pkg)
 
         // Le contenu n'est lu que pour l'application cible choisie par l'utilisateur.
-        if (pkg != CaptureStore.targetPackage.value) return
+        if (pkg !in CaptureStore.targetPackages.value) return
 
         // Un changement de fenêtre = un nouvel écran : on retient son nom pour le journal des écrans.
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            event.className?.toString()?.takeIf { it.isNotBlank() }?.let { currentScreenId = it }
+            event.className?.toString()?.takeIf { it.isNotBlank() }?.let { currentScreens[pkg] = it }
         }
 
-        if (CaptureStore.backfill.value.phase == BackfillPhase.ARMED) startBackfill()
+        // La récupération de l'historique par défilement ne vise que Fraxion (Favoris).
+        if (CaptureStore.backfill.value.phase == BackfillPhase.ARMED && isJournalApp(pkg)) startBackfill()
 
         handler.removeCallbacks(captureRunnable)
         handler.postDelayed(captureRunnable, Constants.DEBOUNCE_MS)
     }
 
-    /** Lit l'écran de l'application cible, met à jour la capture et le journal. */
+    private fun isJournalApp(pkg: String) =
+        pkg.contains(Constants.JOURNAL_PACKAGE_HINT, ignoreCase = true)
+
+    /** Lit l'écran d'une application cible, met à jour la capture et les journaux. */
     private fun readTarget(): ReadResult? {
-        val target = CaptureStore.targetPackage.value ?: return null
         val root = rootInActiveWindow ?: return null
-        if (root.packageName?.toString() != target) return null
+        val target = root.packageName?.toString() ?: return null
+        if (target !in CaptureStore.targetPackages.value) return null
+        val journalApp = isJournalApp(target)
 
         val lines = NodeTextExtractor.extract(root)
         CaptureStore.updateSnapshot(
@@ -76,11 +82,13 @@ class DataTaxiAccessibilityService : AccessibilityService() {
                 lines = lines,
             )
         )
-        val events = JournalParser.eventLines(lines)
-        val added = JournalStore.addAll(JournalStore.today(), events)
-        // Tous les écrans de l'application cible, pas seulement le journal d'événements.
-        ScreenLogStore.record(currentScreenId, lines.map { it.text })
-        return ReadResult(root, events, added)
+        // Journal d'événements : seulement pour Fraxion, pour ne pas y mêler les lignes d'une autre app.
+        val events = if (journalApp) JournalParser.eventLines(lines) else emptyList()
+        val added = if (journalApp) JournalStore.addAll(JournalStore.today(), events) else 0
+        // Tous les écrans de toutes les applications cibles, avec le nom de l'application.
+        val screen = currentScreens[target] ?: UNKNOWN_SCREEN
+        ScreenLogStore.record("$target › $screen", lines.map { it.text })
+        return ReadResult(root, events, added, journalApp)
     }
 
     private companion object {
@@ -113,7 +121,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         if (state.phase != BackfillPhase.RUNNING) return
 
         val result = readTarget()
-        if (result == null) {
+        if (result == null || !result.isJournalApp) {
             finishBackfill(state, "Favoris n'est plus au premier plan. ${state.added} nouvelles lignes ajoutées.")
             return
         }

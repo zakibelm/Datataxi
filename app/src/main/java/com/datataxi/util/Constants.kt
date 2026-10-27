@@ -2,7 +2,11 @@ package com.datataxi.util
 
 object Constants {
     const val PREFS_NAME = "datataxi_prefs"
-    const val KEY_TARGET_PACKAGE = "target_package"
+    const val KEY_TARGET_PACKAGE = "target_package"          // ancienne version (une seule cible)
+    const val KEY_TARGET_PACKAGES = "target_packages"
+
+    /** Le journal d'événements (format « 12:34:56 ... ») ne s'applique qu'à Fraxion. */
+    const val JOURNAL_PACKAGE_HINT = "fraxion"
 
     /** Garde-fous pour ne jamais surcharger la tablette. */
     const val MAX_NODES = 2000

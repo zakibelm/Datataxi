@@ -53,7 +53,7 @@ fun DiagnosticScreen() {
     val clipboard = LocalClipboardManager.current
 
     val connected by CaptureStore.serviceConnected.collectAsState()
-    val target by CaptureStore.targetPackage.collectAsState()
+    val targets by CaptureStore.targetPackages.collectAsState()
     val recent by CaptureStore.recentPackages.collectAsState()
     val snapshot by CaptureStore.snapshot.collectAsState()
     val backfill by CaptureStore.backfill.collectAsState()
@@ -115,7 +115,7 @@ fun DiagnosticScreen() {
     ) {
         Text("DataTaxi", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "Lecture de l'écran de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
+            "Lecture des écrans de tes applications de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
             style = MaterialTheme.typography.bodyMedium,
         )
 
@@ -148,36 +148,46 @@ fun DiagnosticScreen() {
             }
         }
 
-        // 2. Application cible
+        // 2. Applications cibles
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("2. Application cible", style = MaterialTheme.typography.titleMedium)
-                Text("Cible actuelle : ${target ?: "aucune"}")
+                Text("2. Applications cibles", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Ouvre l'application de répartition, reviens ici, puis choisis-la dans la liste (la plus récente est en haut). Seul son nom est retenu avant que tu la choisisses.",
+                    if (targets.isEmpty()) "Aucune application choisie."
+                    else "Applications lues : ${targets.sorted().joinToString(", ")}",
+                )
+                Text(
+                    "Ouvre chaque application à suivre (Fraxion, Padam Driver...), reviens ici, puis touche-la dans la liste pour l'ajouter. Touche-la de nouveau pour la retirer. Seul son nom est retenu avant que tu la choisisses.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (recent.isEmpty()) {
                     Text("Aucune application détectée pour l'instant.")
                 }
                 recent.forEach { pkg ->
-                    if (pkg == target) {
+                    if (pkg in targets) {
                         Button(
-                            onClick = {},
+                            onClick = { CaptureStore.toggleTarget(context, pkg) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("✓ $pkg") }
                     } else {
                         OutlinedButton(
-                            onClick = { CaptureStore.setTarget(context, pkg) },
+                            onClick = { CaptureStore.toggleTarget(context, pkg) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(pkg) }
                     }
                 }
-                if (target != null) {
-                    OutlinedButton(
-                        onClick = { CaptureStore.setTarget(context, null) },
+                // Une cible déjà choisie qui n'est plus dans la liste récente doit rester retirable.
+                targets.filter { it !in recent }.forEach { pkg ->
+                    Button(
+                        onClick = { CaptureStore.toggleTarget(context, pkg) },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Retirer la cible") }
+                    ) { Text("✓ $pkg") }
+                }
+                if (targets.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { CaptureStore.clearTargets(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Retirer toutes les cibles") }
                 }
             }
         }
@@ -247,7 +257,7 @@ fun DiagnosticScreen() {
                                 )
                             )
                         },
-                        enabled = connected && target != null,
+                        enabled = connected && targets.any { it.contains(Constants.JOURNAL_PACKAGE_HINT, ignoreCase = true) },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Récupérer l'historique de Favoris") }
 

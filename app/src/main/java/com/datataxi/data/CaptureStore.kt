@@ -17,8 +17,9 @@ object CaptureStore {
     private val _serviceConnected = MutableStateFlow(false)
     val serviceConnected: StateFlow<Boolean> = _serviceConnected.asStateFlow()
 
-    private val _targetPackage = MutableStateFlow<String?>(null)
-    val targetPackage: StateFlow<String?> = _targetPackage.asStateFlow()
+    /** Applications dont le contenu est lu (Fraxion, Padam Driver, ...). Choisies par l'utilisateur. */
+    private val _targetPackages = MutableStateFlow<Set<String>>(emptySet())
+    val targetPackages: StateFlow<Set<String>> = _targetPackages.asStateFlow()
 
     private val _recentPackages = MutableStateFlow<List<String>>(emptyList())
     val recentPackages: StateFlow<List<String>> = _recentPackages.asStateFlow()
@@ -36,7 +37,14 @@ object CaptureStore {
         if (loaded) return
         val prefs = context.applicationContext
             .getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
-        _targetPackage.value = prefs.getString(Constants.KEY_TARGET_PACKAGE, null)
+        val saved = prefs.getStringSet(Constants.KEY_TARGET_PACKAGES, null)
+        // Ancienne version : une seule cible. On la reprend pour ne rien faire refaire à l'utilisateur.
+        val legacy = prefs.getString(Constants.KEY_TARGET_PACKAGE, null)
+        _targetPackages.value = when {
+            saved != null -> saved.toSet()
+            legacy != null -> setOf(legacy)
+            else -> emptySet()
+        }
         loaded = true
     }
 
@@ -45,16 +53,25 @@ object CaptureStore {
         if (!connected) _backfill.value = BackfillState()
     }
 
-    fun setTarget(context: Context, packageName: String?) {
+    /** Ajoute l'application à la liste des cibles, ou l'en retire si elle y est déjà. */
+    fun toggleTarget(context: Context, packageName: String) {
+        val current = _targetPackages.value
+        saveTargets(context, if (packageName in current) current - packageName else current + packageName)
+    }
+
+    fun clearTargets(context: Context) = saveTargets(context, emptySet())
+
+    private fun saveTargets(context: Context, targets: Set<String>) {
         context.applicationContext
             .getSharedPreferences(Constants.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
+            .remove(Constants.KEY_TARGET_PACKAGE)
             .apply {
-                if (packageName == null) remove(Constants.KEY_TARGET_PACKAGE)
-                else putString(Constants.KEY_TARGET_PACKAGE, packageName)
+                if (targets.isEmpty()) remove(Constants.KEY_TARGET_PACKAGES)
+                else putStringSet(Constants.KEY_TARGET_PACKAGES, targets)
             }
             .apply()
-        _targetPackage.value = packageName
+        _targetPackages.value = targets
         _snapshot.value = null
     }
 
