@@ -27,6 +27,7 @@ class MascotView(context: Context) : View(context) {
     private val mouth = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#263238"); style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
     }
+    private val blush = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8A80"); alpha = 150 }
     private val oval = RectF()
 
     private val anim = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -39,7 +40,9 @@ class MascotView(context: Context) : View(context) {
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
-        val bob = sin(t * 2f * PI.toFloat() * 0.6f) * h * 0.03f
+        val hopP = (t % 4f) / 0.6f
+        val hop = if (hopP < 1f) abs(sin(hopP * PI.toFloat())) * h * 0.10f else 0f
+        val bob = sin(t * 2f * PI.toFloat() * 0.6f) * h * 0.03f - hop
         val squash = 1f + sin(t * 2f * PI.toFloat() * 0.6f) * 0.03f
         val r = minOf(w, h) * 0.42f
         val cx = w / 2f; val cy = h / 2f + bob
@@ -56,15 +59,21 @@ class MascotView(context: Context) : View(context) {
         // yeux : clignement toutes les ~3,5 s
         val phase = t % 3.5f
         val blink = if (phase > 3.35f) 0.1f else 1f
-        val er = r * 0.17f
+        val er = r * 0.24f
         val lookX = if (mood == Mood.THINKING) r * 0.1f else sin(t * 0.7f) * r * 0.06f
         val lookY = if (mood == Mood.THINKING) -r * 0.12f else 0f
         for (dx in floatArrayOf(-r * 0.38f, r * 0.38f)) {
-            oval.set(cx + dx - er, cy - r * 0.15f - er * blink, cx + dx + er, cy - r * 0.15f + er * blink)
+            oval.set(cx + dx - er, cy - r * 0.05f - er * blink, cx + dx + er, cy - r * 0.05f + er * blink)
             c.drawOval(oval, white)
-            oval.set(cx + dx + lookX - er * 0.55f, cy - r * 0.15f + lookY - er * 0.55f * blink,
-                cx + dx + lookX + er * 0.55f, cy - r * 0.15f + lookY + er * 0.55f * blink)
+            oval.set(cx + dx + lookX - er * 0.55f, cy - r * 0.05f + lookY - er * 0.55f * blink,
+                cx + dx + lookX + er * 0.55f, cy - r * 0.05f + lookY + er * 0.55f * blink)
             c.drawOval(oval, dark)
+            if (blink > 0.5f) {
+                c.drawCircle(cx + dx + lookX - er * 0.2f, cy - r * 0.05f + lookY - er * 0.25f, er * 0.2f, white)
+            }
+            // joue
+            oval.set(cx + dx * 1.35f - r * 0.12f, cy + r * 0.28f, cx + dx * 1.35f + r * 0.12f, cy + r * 0.42f)
+            c.drawOval(oval, blush)
         }
 
         // bouche
@@ -76,7 +85,7 @@ class MascotView(context: Context) : View(context) {
                 c.drawOval(oval, dark)
             }
             Mood.THINKING -> {
-                c.drawLine(cx - r * 0.12f, cy + r * 0.42f, cx + r * 0.12f, cy + r * 0.42f, mouth)
+                c.drawCircle(cx, cy + r * 0.42f, r * 0.05f, dark)
                 // trois points qui s'allument
                 val on = ((t * 3f).toInt() % 3)
                 for (i in 0..2) {
@@ -87,7 +96,7 @@ class MascotView(context: Context) : View(context) {
                 white.alpha = 255
             }
             Mood.IDLE -> {
-                oval.set(cx - r * 0.22f, cy + r * 0.15f, cx + r * 0.22f, cy + r * 0.5f)
+                oval.set(cx - r * 0.13f, cy + r * 0.22f, cx + r * 0.13f, cy + r * 0.42f)
                 c.drawArc(oval, 20f, 140f, false, mouth)
             }
         }
