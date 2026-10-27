@@ -23,8 +23,9 @@ function same(a, b) { const x = Buffer.from(a), y = Buffer.from(b);
 
 function askClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const p = spawn('claude', ['-p', '--tools', '', '--max-turns', '1', '--no-session-persistence',
-      '--disable-slash-commands', '--append-system-prompt', SYSTEM], { cwd: WORK, env: process.env });
+    // Forme « = » (vérifiée sur Claude Code 2.1.311 dans ZakiOS) : ces options sont variadiques et avaleraient le prompt.
+    const p = spawn('claude', ['-p', '--disallowedTools=Bash,Write,Edit,NotebookEdit,WebFetch,WebSearch,Read,Glob,Grep,Task,TodoWrite',
+      '--max-turns', '1', '--no-session-persistence', '--disable-slash-commands', '--append-system-prompt', SYSTEM], { cwd: WORK, env: process.env });
     let out = '', err = '';
     const t = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('délai dépassé')); }, 80000);
     p.stdout.on('data', d => out += d); p.stderr.on('data', d => err += d);
