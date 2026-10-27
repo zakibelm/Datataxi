@@ -37,6 +37,26 @@ class CompanionService : Service() {
     private var panel: LinearLayout? = null
     private var answerView: TextView? = null
     private var input: EditText? = null
+    private var tapCount = 0
+    private var lastTap = 0L
+    private var emoteIndex = 0
+
+    /** Touchers rapides : humeur joueuse + petit son, comme les émotes de Coucou. */
+    private fun emote() {
+        val moods = listOf(
+            MascotView.Mood.LOVE to android.media.ToneGenerator.TONE_PROP_ACK,
+            MascotView.Mood.EXCITED to android.media.ToneGenerator.TONE_PROP_BEEP2,
+            MascotView.Mood.JOY to android.media.ToneGenerator.TONE_PROP_PROMPT,
+            MascotView.Mood.SURPRISED to android.media.ToneGenerator.TONE_PROP_NACK,
+        )
+        val (mood, tone) = moods[emoteIndex++ % moods.size]
+        bubble?.setMood(mood, 2500L)
+        runCatching {
+            val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 60)
+            tg.startTone(tone, 250)
+            ui.postDelayed({ tg.release() }, 600L)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,7 +97,12 @@ class CompanionService : Service() {
                     if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) moved = true
                     lp.x = sx + dx; lp.y = sy + dy; wm.updateViewLayout(b, lp)
                 }
-                MotionEvent.ACTION_UP -> if (!moved) { b.setMood(MascotView.Mood.SURPRISED, 600); togglePanel() }
+                MotionEvent.ACTION_UP -> if (!moved) {
+                    val now = System.currentTimeMillis()
+                    tapCount = if (now - lastTap < 700) tapCount + 1 else 1
+                    lastTap = now
+                    if (tapCount >= 3) emote() else { b.setMood(MascotView.Mood.SURPRISED, 600); togglePanel() }
+                }
             }
             true
         }
