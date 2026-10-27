@@ -33,7 +33,7 @@ class CompanionService : Service() {
 
     private lateinit var wm: WindowManager
     private val ui = Handler(Looper.getMainLooper())
-    private var bubble: TextView? = null
+    private var bubble: MascotView? = null
     private var panel: LinearLayout? = null
     private var answerView: TextView? = null
     private var input: EditText? = null
@@ -61,12 +61,9 @@ class CompanionService : Service() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun addBubble() {
-        val b = TextView(this).apply {
-            text = "🚕"; textSize = 28f; gravity = Gravity.CENTER
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#E6263238")) }
-        }
+        val b = MascotView(this)
         val lp = WindowManager.LayoutParams(
-            dp(64), dp(64), overlayType(),
+            dp(84), dp(84), overlayType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.START; x = dp(8); y = dp(160) }
         var sx = 0; var sy = 0; var tx = 0f; var ty = 0f; var moved = false
@@ -120,6 +117,7 @@ class CompanionService : Service() {
         val q = question.trim()
         if (q.isEmpty()) return
         answerView?.text = "…"
+        bubble?.mood = MascotView.Mood.THINKING
         input?.setText("")
         val snap = CaptureStore.snapshot.value
         val mask = CompanionSettings.maskData(this)
@@ -130,6 +128,8 @@ class CompanionService : Service() {
             ui.post {
                 val text = r.getOrElse { "Erreur : ${it.message}" }
                 answerView?.text = text
+                bubble?.mood = MascotView.Mood.SPEAKING
+                ui.postDelayed({ bubble?.mood = MascotView.Mood.IDLE }, (text.length * 60L).coerceIn(1500L, 15000L))
                 if (r.isSuccess && CompanionSettings.speak(this)) AlertPlayer.say(this, text)
             }
         }
