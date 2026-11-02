@@ -4,8 +4,14 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
-/** Un appel : jour, heure (secondes depuis minuit), zone de départ, véhicule. */
-data class Call(val date: LocalDate, val second: Int, val zone: String, val vehicle: String) {
+/** Un appel : jour, heure (secondes depuis minuit), zone de départ, véhicule, type d'appel. */
+data class Call(
+    val date: LocalDate,
+    val second: Int,
+    val zone: String,
+    val vehicle: String,
+    val type: String = CallType.REGULIER,
+) {
     val slot: Int get() = second / 60 / RecurrenceBoard.SLOT_MINUTES
     /** Même appel vu par l'historique du Google Sheet et par le journal de la tablette. */
     val key: String get() = "$date|$second|$zone|$vehicle"
@@ -67,7 +73,7 @@ object RecurrenceBoard {
         val zone = d.departureZone ?: return@mapNotNull null
         val status = d.status ?: return@mapNotNull null
         if (!status.startsWith("recu") && !status.startsWith("pris")) return@mapNotNull null
-        Call(date, sec, zone, d.vehicleId.orEmpty())
+        Call(date, sec, zone, d.vehicleId.orEmpty(), CallType.of(d.serviceType, status))
     }
 
     /** Historique complet + journal de la tablette, sans compter deux fois le même appel. */
@@ -80,10 +86,11 @@ object RecurrenceBoard {
     }
 
     /** Index par jour de la semaine, à construire une fois quand les données changent. */
-    class Index(calls: List<Call>) {
+    class Index(calls: List<Call>, observedFrom: List<Call> = calls) {
         internal val byDay: Map<DayOfWeek, List<Call>> = calls.groupBy { it.date.dayOfWeek }
+        /** Journées observées : comptées sur tous les appels, même quand un filtre est actif. */
         internal val observedDays: Map<DayOfWeek, Int> =
-            byDay.mapValues { (_, list) -> list.map { it.date }.distinct().size }
+            observedFrom.groupBy { it.date.dayOfWeek }.mapValues { (_, list) -> list.map { it.date }.distinct().size }
         val totalCalls: Int = calls.size
         val firstDate: LocalDate? = calls.minOfOrNull { it.date }
         val lastDate: LocalDate? = calls.maxOfOrNull { it.date }

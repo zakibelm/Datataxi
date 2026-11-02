@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -37,7 +38,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.datataxi.data.HistoryStore
 import com.datataxi.data.JournalStore
+import com.datataxi.domain.Call
+import com.datataxi.domain.DayReliability
+import com.datataxi.domain.Filters
 import com.datataxi.domain.RecurrenceBoard
+import com.datataxi.domain.Reliability
 import com.datataxi.domain.SlotRecurrences
 import com.datataxi.domain.Weight
 import kotlinx.coroutines.Dispatchers
@@ -49,25 +54,22 @@ import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Tranches du tableau : la tranche en cours puis les suivantes (2 heures). */
-private const val TABLE_SLOTS = 12
-
-/** Au plus autant de zones en colonnes (les plus récurrentes sur ces 2 heures). */
+/** Au plus autant de zones en colonnes (les plus récurrentes sur la plage). */
 private const val TABLE_ZONES = 8
 
 private val SLOT_COL: Dp = 96.dp
 private val ZONE_COL: Dp = 56.dp
 
-private fun dayName(d: DayOfWeek) = d.getDisplayName(TextStyle.FULL, Locale.CANADA_FRENCH)
+internal fun dayName(d: DayOfWeek) = d.getDisplayName(TextStyle.FULL, Locale.CANADA_FRENCH)
 
-private fun weightColor(w: Weight): Color = when (w) {
+internal fun weightColor(w: Weight): Color = when (w) {
     Weight.FAIBLE -> Color(0xFFFFF1C2)
     Weight.MOYEN -> Color(0xFFFFCF5C)
     Weight.FORT -> Color(0xFFF28C38)
     Weight.TRES_FORT -> Color(0xFFC62828)
 }
 
-private fun weightText(w: Weight): Color = if (w == Weight.TRES_FORT) Color.White else Color(0xFF1C1B1F)
+internal fun weightText(w: Weight): Color = if (w == Weight.TRES_FORT) Color.White else Color(0xFF1C1B1F)
 
 @Composable
 fun PredictionScreen() {
@@ -98,12 +100,17 @@ fun PredictionScreen() {
         }
     }
 
-    val index = remember(journal, history) {
-        RecurrenceBoard.Index(RecurrenceBoard.merge(history, RecurrenceBoard.callsFromJournal(journal)))
+    val calls = remember(journal, history) {
+        RecurrenceBoard.merge(history, RecurrenceBoard.callsFromJournal(journal))
+    }
+    // Le rejeu de l'historique se fait hors du fil principal.
+    val reliability by produceState(initialValue = emptyList<DayReliability>(), calls) {
+        value = withContext(Dispatchers.Default) { Reliability.daily(calls) }
     }
 
     RecurrencesContent(
-        index = index,
+        calls = calls,
+        reliability = reliability,
         now = now,
         hasFullHistory = history.isNotEmpty(),
         historyStatus = historyStatus,
@@ -116,22 +123,37 @@ fun PredictionScreen() {
 /** Affichage seul, sans réseau ni horloge : utilisé par l'écran et par les captures d'écran. */
 @Composable
 fun RecurrencesContent(
-    index: RecurrenceBoard.Index,
+    calls: List<Call>,
+    reliability: List<DayReliability>,
     now: LocalDateTime,
     hasFullHistory: Boolean,
     historyStatus: String,
     refreshing: Boolean,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
+    initialFilters: Filters = Filters(),
+    initialFiltersOpen: Boolean = false,
+    initialPeriod: Reliability.Period = Reliability.Period.WEEK,
 ) {
-    val currentSlot = RecurrenceBoard.slotOf(now.toLocalTime())
-    val rows: List<SlotRecurrences> = remember(index, now.toLocalDate(), currentSlot) {
-        val start = now.withMinute(currentSlot % 6 * 10).withSecond(0).withNano(0)
-        List(TABLE_SLOTS) { i ->
+    var filters by remember { mutableStateOf(initialFilters) }
+    val fullIndex = remember(calls) { RecurrenceBoard.Index(calls) }
+    val zonesByActivity = remember(calls) {
+        calls.groupingBy { it.zone }.eachCount().entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.toIntOrNull() ?: Int.MAX_VALUE })
+            .map { it.key }
+    }
+    val filteredIndex = remember(calls, filters.zones, filters.type) {
+        RecurrenceBoard.Index(calls.filter { filters.keep(it) }, observedFrom = calls)
+    }
+    val start = filters.start(now)
+    val slotCount = filters.slotCount(now)
+    val rows: List<SlotRecurrences> = remember(filteredIndex, start, slotCount) {
+        List(slotCount) { i ->
             val t = start.plusMinutes(i * 10L)
-            RecurrenceBoard.recurrences(index, t.dayOfWeek, RecurrenceBoard.slotOf(t.toLocalTime()))
+            RecurrenceBoard.recurrences(filteredIndex, t.dayOfWeek, RecurrenceBoard.slotOf(t.toLocalTime()))
         }
     }
+    val weightRates = remember(reliability) { Reliability.byWeight(reliability) }
 
     Column(
         modifier = modifier.padding(16.dp),
@@ -143,21 +165,29 @@ fun RecurrencesContent(
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        NowCard(rows.first())
-        RecurrenceTable(rows)
-        Legend()
-        HistoryCard(index, hasFullHistory, historyStatus, refreshing, onRefresh)
+        FiltersCard(
+            filters = filters,
+            zones = zonesByActivity.take(20),
+            initiallyOpen = initialFiltersOpen,
+            onChange = { filters = it },
+        )
+        NowCard(rows.first(), isNow = filters.startMinute == null)
+        RecurrenceTable(rows, filters.zones, zonesByActivity)
+        ConfidenceCard(reliability, initialPeriod)
+        Legend(weightRates)
+        HistoryCard(fullIndex, hasFullHistory, historyStatus, refreshing, onRefresh)
     }
 }
 
 @Composable
-private fun NowCard(r: SlotRecurrences) {
+private fun NowCard(r: SlotRecurrences, isNow: Boolean) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Maintenant · ${RecurrenceBoard.label(r.slot)}", style = MaterialTheme.typography.titleMedium)
+            val title = if (isNow) "Maintenant" else "Début de la plage"
+            Text("$title · ${RecurrenceBoard.label(r.slot)}", style = MaterialTheme.typography.titleMedium)
             if (r.zones.isEmpty()) {
                 Text(
                     "Aucune zone n'a eu d'appel au moins 2 ${dayName(r.dayOfWeek)}s à cette heure-ci. Regarde les tranches suivantes ci-dessous.",
@@ -180,7 +210,7 @@ private fun NowCard(r: SlotRecurrences) {
 }
 
 @Composable
-private fun WeightChip(w: Weight) {
+internal fun WeightChip(w: Weight) {
     Box(
         Modifier
             .clip(RoundedCornerShape(6.dp))
@@ -194,15 +224,19 @@ private fun WeightChip(w: Weight) {
 }
 
 @Composable
-private fun RecurrenceTable(rows: List<SlotRecurrences>) {
-    // Colonnes : les zones récurrentes sur ces 2 heures, la plus forte d'abord.
-    val zones = remember(rows) {
-        rows.flatMap { it.zones }
-            .groupBy { it.zone }
-            .mapValues { (_, list) -> list.maxOf { it.days } * 100 + list.size }
-            .entries.sortedByDescending { it.value }
-            .take(TABLE_ZONES)
-            .map { it.key }
+private fun RecurrenceTable(rows: List<SlotRecurrences>, chosenZones: Set<String>, zonesByActivity: List<String>) {
+    // Colonnes : les zones choisies dans le filtre, sinon les plus récurrentes de la plage.
+    val zones = remember(rows, chosenZones) {
+        if (chosenZones.isNotEmpty()) {
+            zonesByActivity.filter { it in chosenZones } + chosenZones.filter { it !in zonesByActivity }
+        } else {
+            rows.flatMap { it.zones }
+                .groupBy { it.zone }
+                .mapValues { (_, list) -> list.maxOf { it.days } * 100 + list.size }
+                .entries.sortedByDescending { it.value }
+                .take(TABLE_ZONES)
+                .map { it.key }
+        }
     }
     val current = MaterialTheme.colorScheme.secondaryContainer
 
@@ -215,7 +249,7 @@ private fun RecurrenceTable(rows: List<SlotRecurrences>) {
             )
             if (zones.isEmpty()) {
                 Text(
-                    "Aucune récurrence dans les 2 prochaines heures.",
+                    "Aucune récurrence dans cette plage.",
                     modifier = Modifier.padding(12.dp),
                 )
                 return@Column
@@ -247,7 +281,7 @@ private fun RecurrenceTable(rows: List<SlotRecurrences>) {
                 }
             }
             Text(
-                "Chiffre = nombre de jours (même jour de la semaine) où la zone a eu un appel à cette heure (± 10 min). Ligne colorée : maintenant.",
+                "Chiffre = nombre de jours (même jour de la semaine) où la zone a eu un appel à cette heure (± 10 min). Ligne colorée : début de la plage.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
@@ -256,7 +290,7 @@ private fun RecurrenceTable(rows: List<SlotRecurrences>) {
 }
 
 @Composable
-private fun Legend() {
+private fun Legend(rates: Map<Weight, Pair<Int, Int>>) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Poids d'une récurrence", style = MaterialTheme.typography.titleSmall)
@@ -264,11 +298,14 @@ private fun Legend() {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     WeightChip(w)
                     val days = if (w == Weight.TRES_FORT) "${w.minDays} jours et plus" else "${w.minDays} jours"
-                    Text("$days · appel dans la zone ${w.measured}", style = MaterialTheme.typography.bodySmall)
+                    val (n, ok) = rates[w] ?: (0 to 0)
+                    val measured = if (n == 0) "pas encore mesuré"
+                    else "réussite mesurée ${Math.round(100.0 * ok / n)} % ($n prédictions jugées)"
+                    Text("$days · $measured", style = MaterialTheme.typography.bodySmall)
                 }
             }
             Text(
-                "Mesuré en rejouant les 2 dernières semaines jour par jour (sept.–nov. 2026). Sans récurrence : environ 4 fois sur 100. Ce sont des habitudes passées, pas une garantie.",
+                "Chaque journée est rejouée avec les seules journées précédentes. Ce sont des habitudes passées, pas une garantie.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

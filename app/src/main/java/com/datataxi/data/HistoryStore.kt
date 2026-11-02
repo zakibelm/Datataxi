@@ -2,6 +2,7 @@ package com.datataxi.data
 
 import android.content.Context
 import com.datataxi.domain.Call
+import com.datataxi.domain.CallType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -122,7 +123,7 @@ object HistoryStore {
         }
     }
 
-    /** {"ok":true,"rows":[["2026-09-01","00:02:00","1","430"], ...]} */
+    /** {"ok":true,"rows":[["2026-09-01","00:02:00","1","430","Transport Adapté","recu"], ...]} */
     private fun parse(text: String): List<Call> {
         val rows = JSONObject(text).optJSONArray("rows") ?: return emptyList()
         val out = ArrayList<Call>(rows.length())
@@ -132,7 +133,8 @@ object HistoryStore {
             val time = runCatching { LocalTime.parse(r.optString(1)) }.getOrNull() ?: continue
             val zone = r.optString(2).trim()
             if (zone.isEmpty()) continue
-            out.add(Call(date, time.toSecondOfDay(), zone, r.optString(3).trim()))
+            val type = CallType.of(r.optString(4), r.optString(5))
+            out.add(Call(date, time.toSecondOfDay(), zone, r.optString(3).trim(), type))
         }
         return out
     }

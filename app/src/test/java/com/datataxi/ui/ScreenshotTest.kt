@@ -7,12 +7,14 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import com.android.ide.common.rendering.api.SessionParams
 import com.datataxi.domain.Call
-import com.datataxi.domain.RecurrenceBoard
+import com.datataxi.domain.CallType
+import com.datataxi.domain.Filters
+import com.datataxi.domain.Reliability
 import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
+import kotlin.random.Random
 
 /**
  * Captures d'écran de l'interface, rendues par le vrai code de l'application (sans téléphone).
@@ -27,46 +29,64 @@ abstract class ScreenshotBase(device: DeviceConfig) {
         showSystemUi = false,
     )
 
-    /** Lundi 2 novembre 2026, 08:12 : 7 lundis d'historique. */
-    private val now = LocalDateTime.parse("2026-11-02T08:12:00")
+    /** Lundi 2 novembre 2026, 08:12. */
+    protected val now: LocalDateTime = LocalDateTime.parse("2026-11-02T08:12:00")
 
-    private fun sampleIndex(): RecurrenceBoard.Index {
-        val mondays = (1..7).map { LocalDate.parse("2026-11-02").minusWeeks(it.toLong()) }
-        val calls = ArrayList<Call>()
+    /** 8 semaines d'appels d'exemple : zones 1 et 6 très actives, d'autres zones avec des habitudes. */
+    protected val calls: List<Call> by lazy {
+        val rnd = Random(42)
+        val out = ArrayList<Call>()
         var vehicle = 100
-        fun add(day: LocalDate, time: String, zone: String) {
-            calls.add(Call(day, LocalTime.parse(time).toSecondOfDay(), zone, (vehicle++).toString()))
+        val habits = listOf(
+            // zone, minute de la journée, chance par jour, type
+            Triple("12", 8 * 60 + 30, 0.75) to CallType.TRANSPORT_ADAPTE,
+            Triple("8", 8 * 60 + 20, 0.45) to CallType.REGULIER,
+            Triple("41", 9 * 60 + 0, 0.35) to CallType.TAXIBUS,
+            Triple("4", 9 * 60 + 40, 0.6) to CallType.REGULIER,
+            Triple("9", 17 * 60 + 10, 0.55) to CallType.APP_MOBILE,
+            Triple("3", 16 * 60 + 30, 0.5) to CallType.REGULIER,
+        )
+        var day = LocalDate.parse("2026-09-07")
+        while (!day.isAfter(LocalDate.parse("2026-11-02"))) {
+            // Zones 1 et 6 : un appel toutes les 10 à 40 minutes de 6 h à 20 h.
+            for (zone in listOf("1", "6")) {
+                var m = 6 * 60 + rnd.nextInt(30)
+                while (m < 20 * 60) {
+                    out.add(Call(day, m * 60, zone, (vehicle++).toString(), if (rnd.nextInt(5) == 0) CallType.TRANSPORT_ADAPTE else CallType.REGULIER))
+                    m += if (zone == "1") 10 + rnd.nextInt(20) else 20 + rnd.nextInt(30)
+                }
+            }
+            // La confiance progresse avec les semaines : les habitudes deviennent plus régulières.
+            val maturity = 0.6 + 0.4 * (day.toEpochDay() - LocalDate.parse("2026-09-07").toEpochDay()) / 56.0
+            habits.forEach { (h, type) ->
+                val (zone, minute, chance) = h
+                if (rnd.nextDouble() < chance * maturity) {
+                    out.add(Call(day, (minute + rnd.nextInt(-8, 9)) * 60, zone, (vehicle++).toString(), type))
+                }
+            }
+            day = day.plusDays(1)
         }
-        mondays.forEachIndexed { i, day ->
-            // Zones 1 et 6 : actives presque tout le temps.
-            listOf("08:05", "08:14", "08:25", "08:41", "08:55", "09:12", "09:33", "09:52").forEach { add(day, it, "1") }
-            if (i % 2 == 0) listOf("08:11", "08:38", "09:05", "09:44").forEach { add(day, it, "6") }
-            // Zone 12 : 5 lundis sur 7 vers 08:30.
-            if (i < 5) add(day, "08:3${i}", "12")
-            // Zone 8 : 3 lundis sur 7 vers 08:20.
-            if (i in listOf(0, 2, 5)) add(day, "08:2${i}", "8")
-            // Zone 41 : 2 lundis sur 7 vers 09:00.
-            if (i in listOf(1, 4)) add(day, "09:0${i}", "41")
-            // Zone 4 : 4 lundis sur 7 vers 09:40.
-            if (i in listOf(0, 1, 3, 6)) add(day, "09:4${i}", "4")
-        }
-        return RecurrenceBoard.Index(calls)
+        out
     }
 
-    @Test
-    fun recurrences() {
+    protected fun shot(filters: Filters, filtersOpen: Boolean, period: Reliability.Period) {
+        val reliability = Reliability.daily(calls)
         paparazzi.snapshot {
             MaterialTheme {
                 Surface {
                     Column {
                         AppTabs(selected = 0, onSelect = {})
                         RecurrencesContent(
-                            index = sampleIndex(),
+                            calls = calls,
+                            reliability = reliability,
                             now = now,
                             hasFullHistory = true,
                             historyStatus = "Historique complet mis à jour le 2026-11-02 08:00.",
                             refreshing = false,
                             onRefresh = {},
+                            initialFilters = filters,
+                            initialFiltersOpen = filtersOpen,
+                            initialPeriod = period,
                         )
                     }
                 }
@@ -75,6 +95,19 @@ abstract class ScreenshotBase(device: DeviceConfig) {
     }
 }
 
-class TabletScreenshotTest : ScreenshotBase(DeviceConfig.PIXEL_C)
+class TabletScreenshotTest : ScreenshotBase(DeviceConfig.PIXEL_C) {
+    @Test
+    fun recurrences() = shot(Filters(), filtersOpen = true, period = Reliability.Period.WEEK)
+}
 
-class PhoneScreenshotTest : ScreenshotBase(DeviceConfig.PIXEL_5)
+class PhoneScreenshotTest : ScreenshotBase(DeviceConfig.PIXEL_5) {
+    @Test
+    fun recurrences() = shot(Filters(), filtersOpen = false, period = Reliability.Period.WEEK)
+
+    @Test
+    fun filtresEtConfianceParJour() = shot(
+        Filters(zones = setOf("1", "12", "41"), type = CallType.TRANSPORT_ADAPTE, startMinute = 7 * 60, endMinute = 10 * 60),
+        filtersOpen = true,
+        period = Reliability.Period.DAY,
+    )
+}
