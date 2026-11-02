@@ -5,7 +5,6 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.app.ActivityOptionsCompat
@@ -63,7 +62,7 @@ class DiagnosticScreenshotTest {
 
         paparazzi.snapshot {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides noResults) {
-                MaterialTheme {
+                DataTaxiTheme {
                     Surface {
                         Column {
                             AppTabs(selected = 1, onSelect = {})

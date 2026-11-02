@@ -1,7 +1,6 @@
 package com.datataxi.ui
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -72,7 +71,7 @@ abstract class ScreenshotBase(device: DeviceConfig) {
     protected fun shot(filters: Filters, filtersOpen: Boolean, period: Reliability.Period) {
         val reliability = Reliability.daily(calls)
         paparazzi.snapshot {
-            MaterialTheme {
+            DataTaxiTheme {
                 Surface {
                     Column {
                         AppTabs(selected = 0, onSelect = {})

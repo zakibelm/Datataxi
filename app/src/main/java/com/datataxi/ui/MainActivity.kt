@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
         JournalStore.init(applicationContext)
         HistoryStore.init(applicationContext)
         setContent {
-            MaterialTheme {
+            DataTaxiTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
