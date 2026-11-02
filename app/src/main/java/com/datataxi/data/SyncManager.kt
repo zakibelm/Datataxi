@@ -136,6 +136,7 @@ object SyncManager {
 class SyncWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         SyncManager.sendNow(applicationContext)
+        if (HistoryStore.isStale(applicationContext)) HistoryStore.refresh(applicationContext)
         return Result.success() // l'échec est noté ; le prochain cycle horaire réessaie
     }
 }

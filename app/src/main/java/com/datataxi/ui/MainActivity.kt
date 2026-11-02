@@ -16,6 +16,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.datataxi.data.CaptureStore
+import com.datataxi.data.HistoryStore
 import com.datataxi.data.JournalStore
 
 class MainActivity : ComponentActivity() {
@@ -23,6 +24,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
+        HistoryStore.init(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(
@@ -32,7 +34,7 @@ class MainActivity : ComponentActivity() {
                     var tab by rememberSaveable { mutableIntStateOf(0) }
                     Column(Modifier.fillMaxSize()) {
                         TabRow(selectedTabIndex = tab) {
-                            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Prédictions") })
+                            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Récurrences") })
                             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Diagnostic") })
                         }
                         when (tab) {

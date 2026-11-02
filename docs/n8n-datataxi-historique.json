@@ -1,0 +1,182 @@
+{
+  "name": "DataTaxi - Historique pour l'app",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "datataxi-historique",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook historique",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "7c1d2e4a-91b3-4f6e-a8d5-3e2f1b0c9a64"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.body.token }}",
+              "rightValue": "COLLE_ICI_LE_MEME_JETON_QUE_DANS_LE_WORKFLOW_DE_RECEPTION",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Token valide ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1Sc9q6xj4ueDbzZeNFc4LVgCVQ5qNsCYrN8elmn-FN58"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": 193126056,
+          "cachedResultName": "Untitled"
+        },
+        "options": {}
+      },
+      "name": "Lire tout l'historique",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        -100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "name": "Google Sheets - DataTaxi"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Appels utilisables pour les récurrences : [date, heure, zone de départ, véhicule]\nconst rows = [];\nfor (const it of $input.all()) {\n  const r = it.json;\n  const date = String(r.trip_date ?? '').trim();\n  const time = String(r.trip_time ?? '').trim();\n  const zone = String(r.departure_zone ?? '').trim();\n  const status = String(r.current_status ?? '').trim();\n  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) || !/^\\d{2}:\\d{2}:\\d{2}$/.test(time)) continue;\n  if (!/^\\d+$/.test(zone)) continue;\n  if (status === 'historique_xlsx') {\n    if (String(r.source_treatment ?? '').trim() === 'Exclu') continue;\n  } else if (!status.startsWith('recu') && !status.startsWith('pris')) continue;\n  rows.push([date, time, zone, String(r.vehicle_id ?? '').trim()]);\n}\nreturn [{ json: { ok: true, count: rows.length, rows } }];"
+      },
+      "name": "Appels compacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "firstIncomingItem",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Réponse 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        880,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\":false}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "name": "Réponse 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        440,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook historique": {
+      "main": [
+        [
+          {
+            "node": "Token valide ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token valide ?": {
+      "main": [
+        [
+          {
+            "node": "Lire tout l'historique",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Réponse 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lire tout l'historique": {
+      "main": [
+        [
+          {
+            "node": "Appels compacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appels compacts": {
+      "main": [
+        [
+          {
+            "node": "Réponse 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Toronto"
+  }
+}

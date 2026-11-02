@@ -1,0 +1,33 @@
+# Journal des itérations — tableau de bord DataTaxi
+
+Méthode de mesure (réutilisable) : on rejoue les jours du 2026-10-20 au 2026-11-02 un par un ;
+pour chaque jour, le modèle ne voit que les jours précédents, puis on compare aux vrais appels.
+Données : Google Sheet nettoyé (6 657 lignes ; 5 472 appels utilisables avec zone de départ,
+dont 2 078 archives sept.–oct.).
+
+## Itération 1 — v0.8.0 : parts en % (journal de la tablette)
+- Changement : onglet Prédictions, tableau heure × zone, % = part des appels du même jour de la
+  semaine (± 20 min, poids 3-2-1), repli sur tous les jours sous 8 appels.
+- Mesure : recommandation n°1 juste 49,3 % ; zones recommandées autres que 1 et 6 justes 18,7 %.
+- Leçon : **perd contre une constante** (« toujours zone 1 » : 53,5 % ; « toujours 1, 6, 12 » : 64 %
+  des appels couverts). Le top 3 en % ne fait que redire que les zones 1 et 6 sont toujours actives.
+  Ne pas refaire de classement par parts.
+
+## Itération 2 — v0.9.0 : récurrences sur tout l'historique
+- Changement structurel : l'écran affiche les zones qui reviennent au moins 2 journées (même jour
+  de la semaine, même tranche de 10 min ± 10 min), avec un poids, calculées sur tout l'historique
+  (n8n « DataTaxi - Historique pour l'app ») + le journal de la tablette.
+- Mesure (calibration du poids, ± 10 min) : chance d'un appel dans la zone le jour même
+  0 jour 4,1 % · 1 jour 22,8 % · 2 jours 41,5 % · 3 jours 53,0 % · 4 jours 59,8 % · 5 jours 58,3 % (n = 12).
+  → Faible = 2, Moyen = 3, Fort = 4, Très fort = 5 et plus.
+- Mesure (comparaison) : recommandation n°1 juste 51,7 % (contre 49,3 %) ; zones autres que 1 et 6
+  justes 29,5 % (contre 18,7 %, + 58 %) ; mais une recommandation dans 50 % des tranches seulement.
+- Leçon : la récurrence est le bon signal (× 10 à × 15 par rapport au hasard). Tolérance ± 10 min
+  indispensable : en tranche stricte, 2 jours ne donnent que 30,6 %.
+- Variantes écartées : poids au taux (jours/jours observés) — moins bien séparé (40 / 45 / 56 %) ;
+  tranche stricte sans tolérance — couverture 37 %.
+
+## Pistes suivantes (une à la fois)
+- Mesurer « Très fort » quand l'historique dépassera 8 semaines (n trop petit aujourd'hui).
+- Quand aucune récurrence n'existe à l'heure en cours, pointer la prochaine tranche récurrente
+  (« dans 20 min : Zone 12, Fort ») plutôt qu'un message vide.

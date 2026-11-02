@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,56 +24,89 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.datataxi.data.HistoryStore
 import com.datataxi.data.JournalStore
-import com.datataxi.domain.SlotPrediction
-import com.datataxi.domain.ZonePredictor
+import com.datataxi.domain.RecurrenceBoard
+import com.datataxi.domain.SlotRecurrences
+import com.datataxi.domain.Weight
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDateTime
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Tranches affichées dans le tableau : la tranche en cours puis les suivantes (2 heures). */
+/** Tranches du tableau : la tranche en cours puis les suivantes (2 heures). */
 private const val TABLE_SLOTS = 12
 
-/** Zones affichées en colonnes : les plus probables sur ces 2 heures. */
-private const val TABLE_ZONES = 6
+/** Au plus autant de zones en colonnes (les plus récurrentes sur ces 2 heures). */
+private const val TABLE_ZONES = 8
 
 private val SLOT_COL: Dp = 96.dp
-private val ZONE_COL: Dp = 64.dp
+private val ZONE_COL: Dp = 56.dp
 
 private fun dayName(d: DayOfWeek) = d.getDisplayName(TextStyle.FULL, Locale.CANADA_FRENCH)
 
-private fun percent(p: Double) = if (p <= 0.0) "–" else "${Math.round(p * 100)} %"
+private fun weightColor(w: Weight): Color = when (w) {
+    Weight.FAIBLE -> Color(0xFFFFF1C2)
+    Weight.MOYEN -> Color(0xFFFFCF5C)
+    Weight.FORT -> Color(0xFFF28C38)
+    Weight.TRES_FORT -> Color(0xFFC62828)
+}
+
+private fun weightText(w: Weight): Color = if (w == Weight.TRES_FORT) Color.White else Color(0xFF1C1B1F)
 
 @Composable
 fun PredictionScreen() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val journal by JournalStore.entries.collectAsState()
+    val history by HistoryStore.calls.collectAsState()
+    val historyStatus by HistoryStore.status.collectAsState()
+    var refreshing by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(LocalDateTime.now()) }
 
-    // L'heure en cours avance toute seule : le tableau suit la tranche actuelle.
+    fun refresh() {
+        if (refreshing) return
+        refreshing = true
+        scope.launch {
+            withContext(Dispatchers.IO) { HistoryStore.refresh(context) }
+            refreshing = false
+        }
+    }
+
     LaunchedEffect(Unit) {
+        HistoryStore.init(context)
+        if (HistoryStore.isStale(context)) refresh()
+        // L'heure en cours avance toute seule : le tableau suit la tranche actuelle.
         while (true) {
             now = LocalDateTime.now()
             delay(30_000)
         }
     }
 
-    val observations = remember(journal) { ZonePredictor.observations(journal) }
-    val currentSlot = ZonePredictor.slotOf(now.toLocalTime())
-    val predictions: List<SlotPrediction> = remember(observations, now.toLocalDate(), currentSlot) {
+    val index = remember(journal, history) {
+        RecurrenceBoard.Index(RecurrenceBoard.merge(history, RecurrenceBoard.callsFromJournal(journal)))
+    }
+    val currentSlot = RecurrenceBoard.slotOf(now.toLocalTime())
+    val rows: List<SlotRecurrences> = remember(index, now.toLocalDate(), currentSlot) {
         val start = now.withMinute(currentSlot % 6 * 10).withSecond(0).withNano(0)
         List(TABLE_SLOTS) { i ->
             val t = start.plusMinutes(i * 10L)
-            ZonePredictor.predict(observations, t.dayOfWeek, ZonePredictor.slotOf(t.toLocalTime()))
+            RecurrenceBoard.recurrences(index, t.dayOfWeek, RecurrenceBoard.slotOf(t.toLocalTime()))
         }
     }
 
@@ -82,89 +117,73 @@ fun PredictionScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Prédictions par zone", style = MaterialTheme.typography.headlineMedium)
+        Text("Récurrences par zone", style = MaterialTheme.typography.headlineMedium)
         Text(
             "Maintenant : ${dayName(now.dayOfWeek)} ${"%02d:%02d".format(now.hour, now.minute)}",
             style = MaterialTheme.typography.bodyMedium,
         )
 
-        if (observations.isEmpty()) {
-            Card(Modifier.fillMaxWidth()) {
-                Text(
-                    "Pas encore assez d'historique. Les prédictions apparaîtront quand le journal contiendra des appels avec une zone de départ.",
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
-            return@Column
-        }
-
-        RecommendationCard(predictions.first())
-        if (predictions.size > 1) NextSlotCard(predictions[1])
-        PredictionTable(predictions)
-
-        Text(
-            "Pourcentage = part des appels partis de cette zone, observés le même jour de la semaine autour de la même heure (± 20 min). " +
-                "« tous les jours » : l'historique de ce jour de la semaine est encore trop court. " +
-                "Ce sont des tendances passées, pas une garantie.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        NowCard(rows.first())
+        RecurrenceTable(rows)
+        Legend()
+        HistoryCard(index, history.isNotEmpty(), historyStatus, refreshing) { refresh() }
     }
 }
 
 @Composable
-private fun RecommendationCard(p: SlotPrediction) {
+private fun NowCard(r: SlotRecurrences) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Recommandation · ${ZonePredictor.label(p.slot)}", style = MaterialTheme.typography.titleMedium)
-            if (p.chances.isEmpty()) {
-                Text("Aucun appel observé à cette heure-ci.")
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Maintenant · ${RecurrenceBoard.label(r.slot)}", style = MaterialTheme.typography.titleMedium)
+            if (r.zones.isEmpty()) {
+                Text(
+                    "Aucune zone n'a eu d'appel au moins 2 ${dayName(r.dayOfWeek)}s à cette heure-ci. Regarde les tranches suivantes ci-dessous.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             } else {
-                p.chances.take(3).forEachIndexed { i, c ->
-                    Text(
-                        "${i + 1}. Zone ${c.zone} — ${percent(c.probability)}",
-                        style = if (i == 0) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium,
-                        fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Normal,
-                    )
+                r.zones.forEach { z ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        WeightChip(z.weight)
+                        Text("Zone ${z.zone}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            "${z.days} ${dayName(r.dayOfWeek)}s sur ${z.observedDays}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
-            Text(sourceLabel(p), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
 @Composable
-private fun NextSlotCard(p: SlotPrediction) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Ensuite · ${ZonePredictor.label(p.slot)}", style = MaterialTheme.typography.titleSmall)
-            Text(
-                if (p.chances.isEmpty()) "Aucun appel observé."
-                else p.chances.take(3).joinToString("   ") { "Zone ${it.zone} ${percent(it.probability)}" }
-            )
-        }
+private fun WeightChip(w: Weight) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(weightColor(w))
+            .width(84.dp)
+            .padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(w.label, color = weightText(w), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
     }
 }
 
-private fun sourceLabel(p: SlotPrediction): String {
-    val base = if (p.sameWeekday) "Basé sur ${p.days} ${dayName(p.dayOfWeek)}(s)" else "Basé sur tous les jours (${p.days} jours)"
-    return "$base · ${p.samples} appels autour de cette heure"
-}
-
 @Composable
-private fun PredictionTable(predictions: List<SlotPrediction>) {
-    // Colonnes : les zones les plus probables sur l'ensemble des tranches affichées.
-    val zones = remember(predictions) {
-        predictions.flatMap { it.chances }
+private fun RecurrenceTable(rows: List<SlotRecurrences>) {
+    // Colonnes : les zones récurrentes sur ces 2 heures, la plus forte d'abord.
+    val zones = remember(rows) {
+        rows.flatMap { it.zones }
             .groupBy { it.zone }
-            .mapValues { (_, list) -> list.sumOf { it.probability } }
+            .mapValues { (_, list) -> list.maxOf { it.days } * 100 + list.size }
             .entries.sortedByDescending { it.value }
             .take(TABLE_ZONES)
             .map { it.key }
     }
-    val highlight = MaterialTheme.colorScheme.primaryContainer
     val current = MaterialTheme.colorScheme.secondaryContainer
 
     Card(Modifier.fillMaxWidth()) {
@@ -174,6 +193,13 @@ private fun PredictionTable(predictions: List<SlotPrediction>) {
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 12.dp),
             )
+            if (zones.isEmpty()) {
+                Text(
+                    "Aucune récurrence dans les 2 prochaines heures.",
+                    modifier = Modifier.padding(12.dp),
+                )
+                return@Column
+            }
             Column(
                 Modifier
                     .horizontalScroll(rememberScrollState())
@@ -181,27 +207,27 @@ private fun PredictionTable(predictions: List<SlotPrediction>) {
             ) {
                 Row {
                     Cell("Heure", SLOT_COL, bold = true)
-                    zones.forEach { Cell("Zone $it", ZONE_COL, bold = true) }
-                    Cell("Base", ZONE_COL, bold = true)
+                    zones.forEach { Cell("Z $it", ZONE_COL, bold = true) }
                 }
-                predictions.forEachIndexed { i, p ->
-                    val best = p.chances.firstOrNull()?.zone
+                rows.forEachIndexed { i, r ->
                     Row(Modifier.background(if (i == 0) current else Color.Transparent)) {
-                        Cell(ZonePredictor.label(p.slot), SLOT_COL, bold = i == 0)
+                        Cell(RecurrenceBoard.label(r.slot), SLOT_COL, bold = i == 0)
                         zones.forEach { z ->
-                            Cell(
-                                percent(p.probabilityOf(z)),
+                            val rec = r.of(z)
+                            if (rec == null) Cell("", ZONE_COL)
+                            else Cell(
+                                "${rec.days}",
                                 ZONE_COL,
-                                bold = z == best,
-                                background = if (z == best) highlight else Color.Transparent,
+                                bold = true,
+                                background = weightColor(rec.weight),
+                                color = weightText(rec.weight),
                             )
                         }
-                        Cell(if (p.sameWeekday) "${p.days} j." else "tous", ZONE_COL)
                     }
                 }
             }
             Text(
-                "Ligne colorée : tranche en cours. Case en couleur : zone la plus probable de la tranche.",
+                "Chiffre = nombre de jours (même jour de la semaine) où la zone a eu un appel à cette heure (± 10 min). Ligne colorée : maintenant.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
@@ -210,10 +236,70 @@ private fun PredictionTable(predictions: List<SlotPrediction>) {
 }
 
 @Composable
-private fun Cell(text: String, width: Dp, bold: Boolean = false, background: Color = Color.Transparent) {
+private fun Legend() {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Poids d'une récurrence", style = MaterialTheme.typography.titleSmall)
+            Weight.entries.forEach { w ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    WeightChip(w)
+                    val days = if (w == Weight.TRES_FORT) "${w.minDays} jours et plus" else "${w.minDays} jours"
+                    Text("$days · appel dans la zone ${w.measured}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text(
+                "Mesuré en rejouant les 2 dernières semaines jour par jour (sept.–nov. 2026). Sans récurrence : environ 4 fois sur 100. Ce sont des habitudes passées, pas une garantie.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryCard(
+    index: RecurrenceBoard.Index,
+    hasFullHistory: Boolean,
+    status: String,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (hasFullHistory) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Données utilisées", style = MaterialTheme.typography.titleSmall)
+            val range = if (index.firstDate != null) " du ${index.firstDate} au ${index.lastDate}" else ""
+            Text("${index.totalCalls} appels$range.", style = MaterialTheme.typography.bodyMedium)
+            if (!hasFullHistory) {
+                Text(
+                    "Seulement le journal de cette tablette : les récurrences seront bien plus fiables avec tout l'historique.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(status, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = onRefresh, enabled = !refreshing, modifier = Modifier.fillMaxWidth()) {
+                Text(if (refreshing) "Mise à jour…" else "Mettre à jour l'historique")
+            }
+        }
+    }
+}
+
+@Composable
+private fun Cell(
+    text: String,
+    width: Dp,
+    bold: Boolean = false,
+    background: Color = Color.Transparent,
+    color: Color = Color.Unspecified,
+) {
     Box(
         modifier = Modifier
             .width(width)
+            .padding(1.dp)
             .background(background)
             .padding(horizontal = 4.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
@@ -223,6 +309,7 @@ private fun Cell(text: String, width: Dp, bold: Boolean = false, background: Col
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
             textAlign = TextAlign.Center,
+            color = color,
             maxLines = 1,
         )
     }
