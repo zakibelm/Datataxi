@@ -49,6 +49,12 @@ object SyncManager {
         prefs(c).edit().putString("url", url.trim()).putString("token", token.trim()).apply()
     }
 
+    /** Recale le compteur après le nettoyage du journal (voir JournalStore). */
+    fun remapSentCount(c: Context, keptIndex: List<Int>) {
+        val old = sentCount(c)
+        prefs(c).edit().putInt("sent_count", keptIndex.count { it < old }).apply()
+    }
+
     fun resetSent(c: Context) {
         prefs(c).edit().putInt("sent_count", 0).apply()
     }

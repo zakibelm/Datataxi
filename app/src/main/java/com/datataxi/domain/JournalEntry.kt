@@ -1,6 +1,9 @@
 package com.datataxi.domain
 
-/** Une ligne d'événement du journal de Fraxion, avec la date de sa première lecture. */
+/**
+ * Une ligne d'événement du journal de Fraxion, avec la date de l'événement.
+ * Le doublon se reconnaît au texte seul (JournalDedup) ; [key] sert à l'empreinte trip_id.
+ */
 data class JournalEntry(val date: String, val text: String) {
     val key: String get() = "$date|$text"
 

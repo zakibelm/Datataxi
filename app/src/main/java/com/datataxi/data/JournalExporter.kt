@@ -113,6 +113,14 @@ object JournalExporter {
             .apply()
     }
 
+    /** Recale le compteur après le nettoyage du journal (voir JournalStore). */
+    fun remapExportedCount(context: Context, keptIndex: List<Int>) {
+        val p = prefs(context)
+        if (!p.contains(KEY_EXPORTED_COUNT)) return
+        val old = p.getInt(KEY_EXPORTED_COUNT, 0)
+        p.edit().putInt(KEY_EXPORTED_COUNT, keptIndex.count { it < old }).apply()
+    }
+
     fun resetMarkers(context: Context) {
         prefs(context).edit().remove(KEY_EXPORTED_COUNT).remove(KEY_LAST_EXPORT).apply()
     }

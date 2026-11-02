@@ -13,6 +13,7 @@ import com.datataxi.domain.BackfillState
 import com.datataxi.domain.CaptureSnapshot
 import com.datataxi.domain.JournalParser
 import com.datataxi.util.Constants
+import java.time.LocalDateTime
 
 class DataTaxiAccessibilityService : AccessibilityService() {
 
@@ -67,7 +68,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
             )
         )
         val events = JournalParser.eventLines(lines)
-        val added = JournalStore.addAll(JournalStore.today(), events)
+        val added = JournalStore.addAll(LocalDateTime.now(), events)
         return ReadResult(root, events, added)
     }
 

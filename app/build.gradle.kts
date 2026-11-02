@@ -11,8 +11,8 @@ android {
         applicationId = "com.datataxi"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.6.1"
+        versionCode = 8
+        versionName = "0.7.0"
     }
 
     signingConfigs {
@@ -62,4 +62,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
 }

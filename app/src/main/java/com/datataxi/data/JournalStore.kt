@@ -1,17 +1,20 @@
 package com.datataxi.data
 
 import android.content.Context
+import com.datataxi.domain.EventDater
+import com.datataxi.domain.JournalDedup
 import com.datataxi.domain.JournalEntry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * Journal cumulatif des événements lus dans Fraxion, sans doublons.
+ * Un événement est reconnu par son texte, sans tenir compte de la date (voir [JournalDedup]),
+ * et reçoit la date réelle de l'événement, pas celle de sa lecture (voir [EventDater]).
  * Sauvegardé dans un fichier privé de l'application sur la tablette (aucun envoi ailleurs).
  */
 object JournalStore {
@@ -19,40 +22,87 @@ object JournalStore {
     private val _entries = MutableStateFlow<List<JournalEntry>>(emptyList())
     val entries: StateFlow<List<JournalEntry>> = _entries.asStateFlow()
 
-    private val seen = HashSet<String>()
+    private val seen = JournalDedup()
+
+    private const val MIGRATION_PREFS = "datataxi_journal"
+    private const val KEY_MIGRATED = "dedup_text_v1"
 
     @Volatile
     private var file: File? = null
 
+    @Synchronized
     fun init(context: Context) {
         if (file != null) return
         val f = File(context.applicationContext.filesDir, "journal.tsv")
         file = f
-        if (!f.exists()) return
-        val loaded = ArrayList<JournalEntry>()
-        try {
-            f.forEachLine { line ->
-                val i = line.indexOf('\t')
-                if (i > 0) {
-                    val entry = JournalEntry(line.substring(0, i), line.substring(i + 1))
-                    if (seen.add(entry.key)) loaded.add(entry)
+        var loaded = ArrayList<JournalEntry>()
+        if (f.exists()) {
+            val exact = HashSet<String>()
+            try {
+                f.forEachLine { line ->
+                    val i = line.indexOf('\t')
+                    if (i > 0) {
+                        val entry = JournalEntry(line.substring(0, i), line.substring(i + 1))
+                        if (exact.add(entry.key)) loaded.add(entry)
+                    }
                 }
+            } catch (_: Exception) {
+                // Fichier illisible : on repart d'un journal vide plutôt que de planter.
             }
-        } catch (_: Exception) {
-            // Fichier illisible : on repart d'un journal vide plutôt que de planter.
         }
+        loaded = ArrayList(migrateIfNeeded(context, f, loaded))
+        seen.clear()
+        loaded.forEach { e -> parse(e.date)?.let { seen.record(e.text, it) } }
         _entries.value = loaded
     }
 
-    fun today(): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.CANADA).format(Date())
+    /**
+     * Une seule fois après la mise à jour : supprime les copies créées par l'ancienne version
+     * (même événement relu les jours suivants), en gardant la plus ancienne. Les compteurs
+     * « déjà envoyé » et « déjà exporté » sont recalés pour ne rien renvoyer ni rien sauter.
+     */
+    private fun migrateIfNeeded(context: Context, f: File, loaded: List<JournalEntry>): List<JournalEntry> {
+        val prefs = context.applicationContext.getSharedPreferences(MIGRATION_PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_MIGRATED, false)) return loaded
+        if (loaded.isEmpty()) {
+            prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+            return loaded
+        }
+        val (kept, keptIndex) = JournalDedup.keepOldest(loaded)
+        try {
+            f.copyTo(File(f.parentFile, "journal.avant-nettoyage.tsv"), overwrite = true)
+            val tmp = File(f.parentFile, "journal.tsv.tmp")
+            tmp.writeText(kept.joinToString("") { "${it.date}\t${it.text}\n" })
+            if (!tmp.renameTo(f)) {
+                f.writeText(tmp.readText())
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+            return loaded // écriture impossible : on garde l'ancien journal, nouvel essai au prochain démarrage
+        }
+        SyncManager.remapSentCount(context, keptIndex)
+        JournalExporter.remapExportedCount(context, keptIndex)
+        prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+        return kept
+    }
 
-    /** Ajoute les lignes pas encore vues et retourne le nombre de nouvelles lignes. */
-    fun addAll(date: String, texts: List<String>): Int {
+    private fun parse(date: String): LocalDate? = runCatching { LocalDate.parse(date) }.getOrNull()
+
+    /**
+     * Ajoute les lignes pas encore vues et retourne le nombre de nouvelles lignes.
+     * @param texts lignes dans l'ordre de l'écran (la plus récente en premier).
+     */
+    @Synchronized
+    fun addAll(now: LocalDateTime, texts: List<String>): Int {
+        val today = now.toLocalDate()
+        val dates = EventDater.date(texts, now) { seen.knownDate(it, today) }
         val added = ArrayList<JournalEntry>()
-        for (text in texts) {
-            val entry = JournalEntry(date, text)
-            if (seen.add(entry.key)) added.add(entry)
+        texts.forEachIndexed { i, text ->
+            val date = dates[i]
+            if (!seen.isSeen(text, date)) {
+                seen.record(text, date)
+                added.add(JournalEntry(date.toString(), text))
+            }
         }
         if (added.isEmpty()) return 0
         _entries.value = _entries.value + added
@@ -64,6 +114,7 @@ object JournalStore {
         return added.size
     }
 
+    @Synchronized
     fun clear() {
         seen.clear()
         _entries.value = emptyList()
