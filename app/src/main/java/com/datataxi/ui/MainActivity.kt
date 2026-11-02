@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,10 +34,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     var tab by rememberSaveable { mutableIntStateOf(0) }
                     Column(Modifier.fillMaxSize()) {
-                        TabRow(selectedTabIndex = tab) {
-                            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Récurrences") })
-                            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Diagnostic") })
-                        }
+                        AppTabs(tab) { tab = it }
                         when (tab) {
                             0 -> PredictionScreen()
                             else -> DiagnosticScreen()
@@ -45,5 +43,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+/** Onglets de l'application (aussi utilisés par les captures d'écran). */
+@Composable
+fun AppTabs(selected: Int, onSelect: (Int) -> Unit) {
+    TabRow(selectedTabIndex = selected) {
+        Tab(selected = selected == 0, onClick = { onSelect(0) }, text = { Text("Récurrences") })
+        Tab(selected = selected == 1, onClick = { onSelect(1) }, text = { Text("Diagnostic") })
     }
 }

@@ -101,6 +101,29 @@ fun PredictionScreen() {
     val index = remember(journal, history) {
         RecurrenceBoard.Index(RecurrenceBoard.merge(history, RecurrenceBoard.callsFromJournal(journal)))
     }
+
+    RecurrencesContent(
+        index = index,
+        now = now,
+        hasFullHistory = history.isNotEmpty(),
+        historyStatus = historyStatus,
+        refreshing = refreshing,
+        onRefresh = { refresh() },
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+    )
+}
+
+/** Affichage seul, sans réseau ni horloge : utilisé par l'écran et par les captures d'écran. */
+@Composable
+fun RecurrencesContent(
+    index: RecurrenceBoard.Index,
+    now: LocalDateTime,
+    hasFullHistory: Boolean,
+    historyStatus: String,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val currentSlot = RecurrenceBoard.slotOf(now.toLocalTime())
     val rows: List<SlotRecurrences> = remember(index, now.toLocalDate(), currentSlot) {
         val start = now.withMinute(currentSlot % 6 * 10).withSecond(0).withNano(0)
@@ -111,10 +134,7 @@ fun PredictionScreen() {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+        modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Récurrences par zone", style = MaterialTheme.typography.headlineMedium)
@@ -126,7 +146,7 @@ fun PredictionScreen() {
         NowCard(rows.first())
         RecurrenceTable(rows)
         Legend()
-        HistoryCard(index, history.isNotEmpty(), historyStatus, refreshing) { refresh() }
+        HistoryCard(index, hasFullHistory, historyStatus, refreshing, onRefresh)
     }
 }
 

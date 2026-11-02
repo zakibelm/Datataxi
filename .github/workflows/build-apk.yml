@@ -25,6 +25,14 @@ jobs:
       - name: Unit tests (dates et doublons)
         run: gradle testDebugUnitTest --no-daemon --stacktrace
 
+      - name: Captures d'écran de l'interface
+        run: gradle recordPaparazziDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DataTaxi-captures-ecran
+          path: app/src/test/snapshots/images/
+
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
