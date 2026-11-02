@@ -19,7 +19,7 @@ const RESULT_SHEET = 'Récurrences (script)';
 const DASHBOARD_SHEET = 'Tableau de bord';
 const FIABILITE_SHEET = 'Fiabilité (script)';
 
-/** Journées minimum pour afficher une récurrence (lu dans le tableau de bord, case B26). */
+/** Journées minimum pour afficher une récurrence (plage nommée « Seuils_poids » du tableau de bord). */
 const DEFAULT_MIN_DAYS = 2;
 const TOP_ZONES = 15;
 const SLOTS_PER_DAY = 144; // tranches de 10 minutes
@@ -53,19 +53,20 @@ function calculerRecurrences() {
   ecrireFiabilite_(ss, fiabilite_(values, lireSeuils_(ss)));
 }
 
-/** Seuils des poids (journées minimum), lus dans le tableau de bord, cases B26 à B29. */
+/**
+ * Seuils des poids (journées minimum pour Faible, Moyen, Fort, Très fort), lus dans la plage
+ * nommée « Seuils_poids » du tableau de bord : elle suit les cases si des lignes sont ajoutées.
+ */
 function lireSeuils_(ss) {
-  const dash = ss.getSheetByName(DASHBOARD_SHEET);
-  const def = [2, 3, 4, 5];
-  if (!dash) return def;
-  const v = dash.getRange('B26:B29').getValues().map(r => Number(r[0]));
+  const def = [DEFAULT_MIN_DAYS, 3, 4, 5];
+  const range = ss.getRangeByName('Seuils_poids');
+  if (!range) return def;
+  const v = range.getValues().map(r => Number(r[0]));
   return v.every((x, i) => x >= 1 && (i === 0 || x > v[i - 1])) ? v : def;
 }
 
 function lireMinDays_(ss) {
-  const dash = ss.getSheetByName(DASHBOARD_SHEET);
-  const v = dash ? Number(dash.getRange('B26').getValue()) : NaN;
-  return v >= 1 ? v : DEFAULT_MIN_DAYS;
+  return lireSeuils_(ss)[0];
 }
 
 /**
