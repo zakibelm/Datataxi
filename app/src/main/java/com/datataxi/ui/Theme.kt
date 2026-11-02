@@ -6,28 +6,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Thème de DataTaxi : les couleurs violettes que l'application a depuis le début, écrites ici
- * pour qu'elles ne changent jamais (version d'Android, mise à jour de bibliothèque...).
- * Le tableau de bord du Google Sheet utilise les mêmes : voir docs/couleurs.md.
+ * Thème de DataTaxi : bleu marine, le même que le tableau de bord du Google Sheet.
+ * Écrit ici pour qu'il ne change jamais (version d'Android, mise à jour de bibliothèque...).
+ * Correspondance des couleurs : docs/couleurs.md.
  */
+private val Navy = Color(0xFF1F3864)
+private val LightBlue = Color(0xFFD8EAFF)
+private val CardGrey = Color(0xFFEDF1F6)
+private val Ink = Color(0xFF1C1B1F)
+
 private val DataTaxiColors = lightColorScheme(
-    primary = Color(0xFF6750A4),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFEADDFF),
-    onPrimaryContainer = Color(0xFF21005D),
-    secondary = Color(0xFF625B71),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE8DEF8),
-    onSecondaryContainer = Color(0xFF1D192B),
-    background = Color(0xFFFFFBFE),
-    onBackground = Color(0xFF1C1B1F),
-    surface = Color(0xFFFFFBFE),
-    onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE7E0EC),
-    onSurfaceVariant = Color(0xFF49454F),
-    outline = Color(0xFF79747E),
-    outlineVariant = Color(0xFFCAC4D0),
-    error = Color(0xFFB3261E),
+    primary = Navy,
+    onPrimary = Color.White,
+    primaryContainer = LightBlue,
+    onPrimaryContainer = Color(0xFF0B1E3A),
+    secondary = Color(0xFF3D5A80),
+    onSecondary = Color.White,
+    secondaryContainer = LightBlue,
+    onSecondaryContainer = Color(0xFF0B1E3A),
+    tertiary = Color(0xFF3D5A80),
+    background = Color.White,
+    onBackground = Ink,
+    surface = Color.White,
+    onSurface = Ink,
+    surfaceVariant = CardGrey,
+    onSurfaceVariant = Color(0xFF44474E),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF6F8FB),
+    surfaceContainer = CardGrey,
+    surfaceContainerHigh = CardGrey,
+    surfaceContainerHighest = CardGrey,
+    outline = Color(0xFF74777F),
+    outlineVariant = Color(0xFFC4C6CF),
+    error = Color(0xFFC62828),
     errorContainer = Color(0xFFF9DEDC),
 )
 
