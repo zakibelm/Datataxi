@@ -65,4 +65,17 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+
+    // Captures d'écran (Paparazzi) : LayoutLib a besoin de la variante « -jre » de Guava.
+    constraints {
+        testImplementation("com.google.guava:guava") {
+            attributes {
+                attribute(
+                    TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+                    objects.named(TargetJvmEnvironment::class.java, TargetJvmEnvironment.STANDARD_JVM),
+                )
+            }
+            because("LayoutLib et sdk-common utilisent la variante -jre de Guava.")
+        }
+    }
 }
