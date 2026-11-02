@@ -27,7 +27,31 @@ dont 2 078 archives sept.–oct.).
 - Variantes écartées : poids au taux (jours/jours observés) — moins bien séparé (40 / 45 / 56 %) ;
   tranche stricte sans tolérance — couverture 37 %.
 
+## Itération 3 — tableau de bord Google Sheet : carte de décision « Opportunité »
+- Diagnostic : la ligne « Maintenant » listait jusqu'à 5 zones (le chauffeur hésite) ou rien
+  (« Aucune récurrence » la moitié du temps). Et elle commençait presque toujours par la zone 1.
+- Découverte : sur une fenêtre de 30 min (maintenant − 10 min à + 20 min), la zone 1 a un appel
+  86,3 % du temps. « Un appel aura lieu dans la zone » est saturé par les zones 1 et 6 : tout le
+  monde les connaît. La valeur est dans la zone moins évidente.
+- Mesure (toute l'historique rejoué jour par jour depuis le 2026-09-08, 2 107 tranches jugées,
+  succès = appel dans la zone entre − 10 et + 20 min ; zones hors 1 et 6) :
+  · actuel (1re zone hors 1/6 de « Maintenant ») : réponse 20,6 %, juste 48,5 %, succès/tranche 10,0 %
+  · **regard sur les 20 prochaines minutes** : réponse 27,0 %, juste 47,8 %, succès/tranche 12,9 % (+ 29 %)
+  · taux jours/jours observés : juste 41,9 % — écarté
+  · écart avec l'habitude de la zone (lift) : juste 36,8 % — écarté
+  · 3 journées minimum : juste 55 % mais réponse 4 à 7 % — écarté (trop rare)
+  · référence au hasard « toujours zone 12 » : juste 39,4 %
+- Changement livré : la ligne « Maintenant » devient deux lignes :
+  « Zones habituelles » (les 2 zones les plus actives de l'historique, avec leur récurrence)
+  et « Opportunité, 20 prochaines minutes » (une seule zone hors des 2 habituelles, la plus
+  récurrente, la plus proche en cas d'égalité, avec heure, poids et réussite mesurée).
+- Vérification : 5 moments (dont 3 saisis dans la case de référence) identiques à un calcul
+  Python indépendant.
+- Leçons : ne plus mesurer la réussite des zones 1/6 (toujours vraie) ; les classements au taux et
+  au lift perdent contre le simple nombre de journées.
+- Piège Sheets : dans LET, des noms comme c1, c2 sont des adresses de cellule → #NAME?.
+
 ## Pistes suivantes (une à la fois)
 - Mesurer « Très fort » quand l'historique dépassera 8 semaines (n trop petit aujourd'hui).
-- Quand aucune récurrence n'existe à l'heure en cours, pointer la prochaine tranche récurrente
-  (« dans 20 min : Zone 12, Fort ») plutôt qu'un message vide.
+- Mesurer la concurrence (nombre de véhicules qui prennent des appels dans la zone à cette
+  heure) : une zone avec peu de véhicules pour ses appels vaut plus qu'une zone saturée.
