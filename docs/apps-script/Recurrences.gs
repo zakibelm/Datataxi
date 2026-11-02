@@ -17,6 +17,7 @@
 const SOURCE_SHEET = 'Untitled';
 const RESULT_SHEET = 'Récurrences (script)';
 const DASHBOARD_SHEET = 'Tableau de bord';
+const FIABILITE_SHEET = 'Fiabilité (script)';
 
 /** Journées minimum pour afficher une récurrence (lu dans le tableau de bord, case B26). */
 const DEFAULT_MIN_DAYS = 2;
@@ -49,6 +50,16 @@ function calculerRecurrences() {
   const minDays = lireMinDays_(ss);
   const result = calculer_(values, minDays);
   ecrire_(ss, result);
+  ecrireFiabilite_(ss, fiabilite_(values, lireSeuils_(ss)));
+}
+
+/** Seuils des poids (journées minimum), lus dans le tableau de bord, cases B26 à B29. */
+function lireSeuils_(ss) {
+  const dash = ss.getSheetByName(DASHBOARD_SHEET);
+  const def = [2, 3, 4, 5];
+  if (!dash) return def;
+  const v = dash.getRange('B26:B29').getValues().map(r => Number(r[0]));
+  return v.every((x, i) => x >= 1 && (i === 0 || x > v[i - 1])) ? v : def;
 }
 
 function lireMinDays_(ss) {
@@ -180,5 +191,173 @@ function ecrire_(ss, res) {
   }
 }
 
+/* ------------------------------------------------------------------------------------------
+ * Fiabilité : chaque journée est rejouée comme si on y était. Les récurrences sont calculées
+ * avec les seules journées précédentes, puis comparées aux appels réellement observés ce jour-là.
+ * On ne juge que les tranches où la journée a des données (au moins un appel à 10 minutes près) :
+ * une tablette éteinte ne compte pas comme une prédiction ratée.
+ * ---------------------------------------------------------------------------------------- */
+
+const LEVELS = ['Faible', 'Moyen', 'Fort', 'Très fort'];
+const WEEKDAY_NAMES = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+/** Appels retenus : {date, weekday, slot, zone}, triés par date. */
+function appels_(values) {
+  const header = values[0].map(h => String(h).trim());
+  const col = name => {
+    const i = header.indexOf(name);
+    if (i < 0) throw new Error('Colonne introuvable : ' + name);
+    return i;
+  };
+  const cDate = col('trip_date'), cTime = col('trip_time'), cZone = col('departure_zone');
+  const cStatus = col('current_status'), cTreatment = col('source_treatment');
+  const out = [];
+  for (let r = 1; r < values.length; r++) {
+    const row = values[r];
+    const date = String(row[cDate] || '').trim();
+    const time = String(row[cTime] || '').trim();
+    const zone = String(row[cZone] || '').trim();
+    const status = String(row[cStatus] || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}:\d{2}$/.test(time)) continue;
+    if (!/^\d+$/.test(zone)) continue;
+    if (status === 'historique_xlsx') {
+      if (String(row[cTreatment] || '').trim() === 'Exclu') continue;
+    } else if (!/^(recu|pris)/.test(status)) continue;
+    const p = time.split(':').map(Number);
+    out.push({ date: date, weekday: weekdayOf_(date), slot: Math.floor((p[0] * 60 + p[1]) / 10), zone: zone });
+  }
+  return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+function niveau_(days, seuils) {
+  let lvl = -1;
+  for (let i = 0; i < seuils.length; i++) if (days >= seuils[i]) lvl = i;
+  return lvl;
+}
+
+/**
+ * @return {{jours: Array, semaines: Array, niveaux: Array}}
+ *  jours : [date, jour, tranches jugées, prédictions, réalisées, taux, taux sans récurrence,
+ *           taux Faible, Moyen, Fort, Très fort]
+ *  semaines : [lundi de la semaine, prédictions, réalisées, taux, taux sans récurrence]
+ *  niveaux : [niveau, prédictions, réalisées, taux] sur tout l'historique jugé
+ */
+function fiabilite_(values, seuils) {
+  const calls = appels_(values);
+  const byDate = {};
+  calls.forEach(c => (byDate[c.date] = byDate[c.date] || []).push(c));
+  const dates = Object.keys(byDate).sort();
+
+  const index = {};      // weekday -> "slot|zone" -> Set(dates), journées précédentes seulement
+  const zonesConnues = new Set();
+  const jours = [];
+  const parNiveau = LEVELS.map(() => [0, 0]);
+
+  dates.forEach(date => {
+    const dayCalls = byDate[date];
+    const w = dayCalls[0].weekday;
+
+    // Ce qui s'est passé ce jour-là, à 10 minutes près.
+    const realise = new Set();
+    const tranchesJugees = new Set();
+    dayCalls.forEach(c => {
+      for (let s = c.slot - 1; s <= c.slot + 1; s++) {
+        if (s < 0 || s >= SLOTS_PER_DAY) continue;
+        realise.add(s + '|' + c.zone);
+        tranchesJugees.add(s);
+      }
+    });
+
+    // Prédictions faites avec les journées précédentes, sur les tranches jugées.
+    const idx = index[w] || {};
+    let pred = 0, ok = 0;
+    const niv = LEVELS.map(() => [0, 0]);
+    const predites = new Set();
+    Object.keys(idx).forEach(key => {
+      const s = Number(key.split('|')[0]);
+      if (!tranchesJugees.has(s)) return;
+      const lvl = niveau_(idx[key].size, seuils);
+      if (lvl < 0) return;
+      predites.add(key);
+      const hit = realise.has(key) ? 1 : 0;
+      pred++; ok += hit;
+      niv[lvl][0]++; niv[lvl][1] += hit;
+      parNiveau[lvl][0]++; parNiveau[lvl][1] += hit;
+    });
+
+    // Référence : les couples tranche × zone connue sans récurrence.
+    let base = 0, baseOk = 0;
+    tranchesJugees.forEach(s => {
+      zonesConnues.forEach(z => {
+        const key = s + '|' + z;
+        if (predites.has(key)) return;
+        base++;
+        if (realise.has(key)) baseOk++;
+      });
+    });
+
+    if (pred > 0) {
+      jours.push([date, WEEKDAY_NAMES[w], tranchesJugees.size, pred, ok, ok / pred,
+        base ? baseOk / base : '',
+        ...niv.map(n => (n[0] ? n[1] / n[0] : ''))]);
+    }
+
+    // La journée rejoint l'historique pour les jours suivants.
+    const target = (index[w] = index[w] || {});
+    dayCalls.forEach(c => {
+      zonesConnues.add(c.zone);
+      for (let s = c.slot - 1; s <= c.slot + 1; s++) {
+        if (s < 0 || s >= SLOTS_PER_DAY) continue;
+        const key = s + '|' + c.zone;
+        (target[key] = target[key] || new Set()).add(date);
+      }
+    });
+  });
+
+  // Semaines (du lundi au dimanche), pondérées par le nombre de prédictions.
+  const sem = {};
+  jours.forEach(j => {
+    const d = new Date(j[0] + 'T00:00:00Z');
+    const lundi = new Date(d.getTime() - (weekdayOf_(j[0]) - 1) * 86400000).toISOString().slice(0, 10);
+    const s = (sem[lundi] = sem[lundi] || [0, 0, 0, 0]);
+    s[0] += j[3]; s[1] += j[4];
+    if (j[6] !== '') { s[2] += j[6] * j[2]; s[3] += j[2]; }
+  });
+  const semaines = Object.keys(sem).sort().map(k => [k, sem[k][0], sem[k][1], sem[k][1] / sem[k][0],
+    sem[k][3] ? sem[k][2] / sem[k][3] : '']);
+
+  const niveaux = LEVELS.map((l, i) => [l, parNiveau[i][0], parNiveau[i][1],
+    parNiveau[i][0] ? parNiveau[i][1] / parNiveau[i][0] : '']);
+
+  return { jours: jours, semaines: semaines, niveaux: niveaux };
+}
+
+function ecrireFiabilite_(ss, f) {
+  let sh = ss.getSheetByName(FIABILITE_SHEET);
+  if (!sh) sh = ss.insertSheet(FIABILITE_SHEET);
+  sh.clearContents();
+  const need = Math.max(f.jours.length, f.semaines.length) + 2;
+  if (sh.getMaxRows() < need) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+  if (sh.getMaxColumns() < 22) sh.insertColumnsAfter(sh.getMaxColumns(), 22 - sh.getMaxColumns());
+
+  sh.getRange(1, 1, 1, 11).setValues([['Date', 'Jour', 'Tranches jugées', 'Prédictions', 'Réalisées',
+    'Taux de réussite', 'Taux sans récurrence', 'Taux Faible', 'Taux Moyen', 'Taux Fort', 'Taux Très fort']]);
+  if (f.jours.length) sh.getRange(2, 1, f.jours.length, 11).setValues(f.jours);
+
+  sh.getRange(1, 13, 1, 5).setValues([['Semaine du', 'Prédictions', 'Réalisées', 'Taux de réussite', 'Taux sans récurrence']]);
+  if (f.semaines.length) sh.getRange(2, 13, f.semaines.length, 5).setValues(f.semaines);
+
+  sh.getRange(1, 19, 1, 4).setValues([['Poids', 'Prédictions', 'Réalisées', 'Taux de réussite']]);
+  sh.getRange(2, 19, f.niveaux.length, 4).setValues(f.niveaux);
+
+  sh.getRange('A2:A').setNumberFormat('yyyy-mm-dd');
+  sh.getRange('M2:M').setNumberFormat('yyyy-mm-dd');
+  sh.getRange('F2:K').setNumberFormat('0.0%');
+  sh.getRange('P2:Q').setNumberFormat('0.0%');
+  sh.getRange('V2:V').setNumberFormat('0.0%');
+}
+
 // Pour les tests hors de Google (Node).
-if (typeof module !== 'undefined') module.exports = { calculer_: calculer_, weekdayOf_: weekdayOf_ };
+if (typeof module !== 'undefined') {
+  module.exports = { calculer_: calculer_, weekdayOf_: weekdayOf_, fiabilite_: fiabilite_ };
+}
