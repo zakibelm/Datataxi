@@ -46,8 +46,9 @@ import java.util.Locale
 
 private enum class PendingExport { CSV_ALL, CSV_NEW, JOURNAL }
 
+/** @param scrollable false seulement pour les captures d'écran pleine hauteur. */
 @Composable
-fun DiagnosticScreen() {
+fun DiagnosticScreen(scrollable: Boolean = true) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
@@ -99,8 +100,7 @@ fun DiagnosticScreen() {
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .then(if (scrollable) Modifier.fillMaxSize().verticalScroll(rememberScrollState()) else Modifier)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
