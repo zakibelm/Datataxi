@@ -54,20 +54,12 @@ jobs:
           prerelease: true
           files: DataTaxi-debug.apk
 
-      # Version de la branche de travail : même lien direct, sans zip et sans compte GitHub.
-      - name: Publish branch APK as a test release
-        if: github.ref != 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: version-de-test
-          name: DataTaxi - version en cours de test (branche de travail)
-          prerelease: true
-          files: DataTaxi-debug.apk
-
   # Démarrage réel sur un émulateur Android : mise à jour depuis la v0.6.1 avec un journal à doublons.
   demarrage:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -95,3 +87,13 @@ jobs:
         with:
           name: DataTaxi-demarrage-emulateur
           path: demarrage/
+
+      # Publication seulement si l'application démarre sans planter sur l'émulateur.
+      - name: Publish branch APK as a test release
+        if: github.ref != 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: version-de-test
+          name: DataTaxi - version en cours de test (branche de travail)
+          prerelease: true
+          files: DataTaxi-debug.apk

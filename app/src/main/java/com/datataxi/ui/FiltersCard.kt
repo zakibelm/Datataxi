@@ -57,60 +57,61 @@ fun FiltersCard(
                 }
                 TextButton(onClick = { open = !open }) { Text(if (open) "Masquer" else "Modifier") }
             }
-            if (!open) return@Column
+            if (open) {
 
-            Text("Zones", style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(
-                    selected = filters.zones.isEmpty(),
-                    onClick = { onChange(filters.copy(zones = emptySet())) },
-                    label = { Text("Toutes") },
-                )
-                zones.forEach { z ->
-                    val on = z in filters.zones
+                Text("Zones", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
-                        selected = on,
-                        onClick = { onChange(filters.copy(zones = if (on) filters.zones - z else filters.zones + z)) },
-                        label = { Text("Zone $z") },
+                        selected = filters.zones.isEmpty(),
+                        onClick = { onChange(filters.copy(zones = emptySet())) },
+                        label = { Text("Toutes") },
+                    )
+                    zones.forEach { z ->
+                        val on = z in filters.zones
+                        FilterChip(
+                            selected = on,
+                            onClick = { onChange(filters.copy(zones = if (on) filters.zones - z else filters.zones + z)) },
+                            label = { Text("Zone $z") },
+                        )
+                    }
+                }
+
+                Text("Type d'appel", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = filters.type == null,
+                        onClick = { onChange(filters.copy(type = null)) },
+                        label = { Text("Tous") },
+                    )
+                    CallType.ALL.forEach { t ->
+                        FilterChip(
+                            selected = filters.type == t,
+                            onClick = { onChange(filters.copy(type = if (filters.type == t) null else t)) },
+                            label = { Text(t) },
+                        )
+                    }
+                }
+
+                Text("Heures", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HourPicker(
+                        label = "Début",
+                        value = filters.startMinute?.let(::hhmm) ?: "Maintenant",
+                        emptyChoice = "Maintenant",
+                        onPick = { onChange(filters.copy(startMinute = it)) },
+                    )
+                    HourPicker(
+                        label = "Fin",
+                        value = filters.endMinute?.let(::hhmm) ?: "+ 2 h",
+                        emptyChoice = "+ 2 h",
+                        onPick = { onChange(filters.copy(endMinute = it)) },
                     )
                 }
-            }
+                Text("La plage va jusqu'à 6 heures. Le jour de la semaine est celui d'aujourd'hui.", style = MaterialTheme.typography.bodySmall)
 
-            Text("Type d'appel", style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(
-                    selected = filters.type == null,
-                    onClick = { onChange(filters.copy(type = null)) },
-                    label = { Text("Tous") },
-                )
-                CallType.ALL.forEach { t ->
-                    FilterChip(
-                        selected = filters.type == t,
-                        onClick = { onChange(filters.copy(type = if (filters.type == t) null else t)) },
-                        label = { Text(t) },
-                    )
+                if (filters.activeCount > 0) {
+                    TextButton(onClick = { onChange(Filters()) }) { Text("Effacer les filtres") }
                 }
-            }
-
-            Text("Heures", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                HourPicker(
-                    label = "Début",
-                    value = filters.startMinute?.let(::hhmm) ?: "Maintenant",
-                    emptyChoice = "Maintenant",
-                    onPick = { onChange(filters.copy(startMinute = it)) },
-                )
-                HourPicker(
-                    label = "Fin",
-                    value = filters.endMinute?.let(::hhmm) ?: "+ 2 h",
-                    emptyChoice = "+ 2 h",
-                    onPick = { onChange(filters.copy(endMinute = it)) },
-                )
-            }
-            Text("La plage va jusqu'à 6 heures. Le jour de la semaine est celui d'aujourd'hui.", style = MaterialTheme.typography.bodySmall)
-
-            if (filters.activeCount > 0) {
-                TextButton(onClick = { onChange(Filters()) }) { Text("Effacer les filtres") }
             }
         }
     }

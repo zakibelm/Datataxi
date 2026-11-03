@@ -6,6 +6,32 @@ PKG=com.datataxi
 OUT=demarrage
 mkdir -p "$OUT"
 
+verifier() {
+  # $1 = nom du scénario
+  sleep 25
+  adb logcat -d > "$OUT/$1-logcat.txt"
+  adb logcat -d -b crash > "$OUT/$1-plantage.txt" || true
+  adb shell run-as $PKG cat files/dernier-plantage.txt > "$OUT/$1-rapport-app.txt" 2>/dev/null || true
+  adb exec-out screencap -p > "$OUT/$1-ecran.png" || true
+  local pid
+  pid=$(adb shell pidof $PKG | tr -d '\r')
+  if [ -s "$OUT/$1-plantage.txt" ] || [ -z "$pid" ] || grep -q "FATAL EXCEPTION" "$OUT/$1-logcat.txt"; then
+    echo "ÉCHEC ($1) : l'application a planté au démarrage"
+    grep -A 40 "FATAL EXCEPTION" "$OUT/$1-logcat.txt" | head -60
+    exit 1
+  fi
+  echo "OK ($1) : l'application tourne (pid $pid)"
+}
+
+echo "== Scénario 1 : installation neuve, sans journal"
+adb uninstall $PKG >/dev/null 2>&1 || true
+adb install -r DataTaxi-debug.apk
+adb logcat -c
+adb shell am start -W -n $PKG/.ui.MainActivity
+verifier installation-neuve
+adb uninstall $PKG
+
+echo "== Scénario 2 : mise à jour depuis la v0.6.1 avec un journal à doublons"
 echo "== Installation de l'ancienne version (v0.6.1)"
 curl -sSL -o ancienne.apk https://github.com/zakibelm/Datataxi/releases/download/latest-debug/DataTaxi-debug.apk
 adb install -r ancienne.apk
@@ -44,22 +70,6 @@ echo "== Mise à jour vers la nouvelle version"
 adb install -r DataTaxi-debug.apk
 adb logcat -c
 adb shell am start -W -n $PKG/.ui.MainActivity
-sleep 25
-
-adb logcat -d > "$OUT/logcat.txt"
-adb logcat -d -b crash > "$OUT/plantage.txt" || true
-adb shell run-as $PKG cat files/dernier-plantage.txt > "$OUT/rapport-app.txt" 2>/dev/null || true
-adb shell run-as $PKG ls -la files > "$OUT/fichiers.txt" || true
-adb shell run-as $PKG wc -l files/journal.tsv >> "$OUT/fichiers.txt" || true
-adb exec-out screencap -p > "$OUT/ecran.png" || true
-PID=$(adb shell pidof $PKG | tr -d '\r')
-
-echo "== Résultat"
-cat "$OUT/fichiers.txt"
-if [ -s "$OUT/plantage.txt" ] || [ -z "$PID" ] || grep -q "FATAL EXCEPTION" "$OUT/logcat.txt"; then
-  echo "ÉCHEC : l'application a planté au démarrage"
-  grep -A 40 "FATAL EXCEPTION" "$OUT/logcat.txt" | head -80
-  cat "$OUT/plantage.txt" | head -80
-  exit 1
-fi
-echo "OK : l'application tourne (pid $PID)"
+verifier mise-a-jour
+adb shell run-as $PKG wc -l files/journal.tsv files/journal.avant-nettoyage.tsv > "$OUT/journal-apres-nettoyage.txt" || true
+cat "$OUT/journal-apres-nettoyage.txt"

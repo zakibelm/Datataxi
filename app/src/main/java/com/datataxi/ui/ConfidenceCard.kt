@@ -73,13 +73,12 @@ fun ConfidenceCard(days: List<DayReliability>, initialPeriod: Reliability.Period
 
             if (shown.isEmpty()) {
                 Text("Pas encore assez d'historique pour mesurer la confiance.", style = MaterialTheme.typography.bodyMedium)
-                return@Column
+            } else {
+                Summary(shown)
+                Chart(shown)
+                LegendRow()
+                PeriodTable(shown.takeLast(6))
             }
-
-            Summary(shown)
-            Chart(shown)
-            LegendRow()
-            PeriodTable(shown.takeLast(6))
         }
     }
 }

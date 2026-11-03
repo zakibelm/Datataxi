@@ -253,39 +253,39 @@ private fun RecurrenceTable(rows: List<SlotRecurrences>, chosenZones: Set<String
                     "Aucune récurrence dans cette plage.",
                     modifier = Modifier.padding(12.dp),
                 )
-                return@Column
-            }
-            Column(
-                Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 8.dp)
-            ) {
-                Row {
-                    Cell("Heure", SLOT_COL, bold = true)
-                    zones.forEach { Cell("Z $it", ZONE_COL, bold = true) }
-                }
-                rows.forEachIndexed { i, r ->
-                    Row(Modifier.background(if (i == 0) current else Color.Transparent)) {
-                        Cell(RecurrenceBoard.label(r.slot), SLOT_COL, bold = i == 0)
-                        zones.forEach { z ->
-                            val rec = r.of(z)
-                            if (rec == null) Cell("", ZONE_COL)
-                            else Cell(
-                                "${rec.days}",
-                                ZONE_COL,
-                                bold = true,
-                                background = weightColor(rec.weight),
-                                color = weightText(rec.weight),
-                            )
+            } else {
+                Column(
+                    Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 8.dp)
+                ) {
+                    Row {
+                        Cell("Heure", SLOT_COL, bold = true)
+                        zones.forEach { Cell("Z $it", ZONE_COL, bold = true) }
+                    }
+                    rows.forEachIndexed { i, r ->
+                        Row(Modifier.background(if (i == 0) current else Color.Transparent)) {
+                            Cell(RecurrenceBoard.label(r.slot), SLOT_COL, bold = i == 0)
+                            zones.forEach { z ->
+                                val rec = r.of(z)
+                                if (rec == null) Cell("", ZONE_COL)
+                                else Cell(
+                                    "${rec.days}",
+                                    ZONE_COL,
+                                    bold = true,
+                                    background = weightColor(rec.weight),
+                                    color = weightText(rec.weight),
+                                )
+                            }
                         }
                     }
                 }
+                Text(
+                    "Chiffre = nombre de jours (même jour de la semaine) où la zone a eu un appel à cette heure (± 10 min). Ligne colorée : début de la plage.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
             }
-            Text(
-                "Chiffre = nombre de jours (même jour de la semaine) où la zone a eu un appel à cette heure (± 10 min). Ligne colorée : début de la plage.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            )
         }
     }
 }
