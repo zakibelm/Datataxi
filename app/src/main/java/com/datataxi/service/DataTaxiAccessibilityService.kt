@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.datataxi.data.CaptureStore
+import com.datataxi.data.CrashLog
 import com.datataxi.data.JournalStore
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
@@ -32,6 +33,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        CrashLog.install(applicationContext)
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
         CaptureStore.setServiceConnected(true)
