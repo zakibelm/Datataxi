@@ -44,6 +44,17 @@ class RecurrenceBoardTest {
     }
 
     @Test
+    fun typesOfCallsAreCountedPerZone() {
+        val withTypes = listOf(
+            Call(LocalDate.parse("2026-10-12"), LocalTime.parse("08:12:00").toSecondOfDay(), "12", "1", CallType.TAXIBUS),
+            Call(LocalDate.parse("2026-10-19"), LocalTime.parse("08:14:00").toSecondOfDay(), "12", "2", CallType.TAXIBUS),
+            Call(LocalDate.parse("2026-10-19"), LocalTime.parse("08:15:00").toSecondOfDay(), "12", "3", CallType.REGULIER),
+        )
+        val r = RecurrenceBoard.recurrences(RecurrenceBoard.Index(withTypes), DayOfWeek.MONDAY, 49)
+        assertEquals(listOf(CallType.TAXIBUS to 2, CallType.REGULIER to 1), r.of("12")!!.types)
+    }
+
+    @Test
     fun weightScale() {
         assertNull(Weight.of(1))
         assertEquals(Weight.FAIBLE, Weight.of(2))

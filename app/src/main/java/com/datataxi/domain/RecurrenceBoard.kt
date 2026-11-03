@@ -34,7 +34,13 @@ enum class Weight(val minDays: Int, val label: String, val measured: String) {
 }
 
 /** Une zone qui revient dans la tranche : [days] journées sur [observedDays] observées. */
-data class Recurrence(val zone: String, val days: Int, val observedDays: Int) {
+data class Recurrence(
+    val zone: String,
+    val days: Int,
+    val observedDays: Int,
+    /** Types d'appel observés dans la zone à cette heure-ci, du plus fréquent au moins fréquent (type, nombre d'appels). */
+    val types: List<Pair<String, Int>> = emptyList(),
+) {
     val weight: Weight get() = Weight.of(days)!!
 }
 
@@ -100,14 +106,22 @@ object RecurrenceBoard {
     fun recurrences(index: Index, day: DayOfWeek, slot: Int): SlotRecurrences {
         val calls = index.byDay[day].orEmpty()
         val datesByZone = HashMap<String, MutableSet<LocalDate>>()
+        val typesByZone = HashMap<String, HashMap<String, Int>>()
         for (c in calls) {
             if (kotlin.math.abs(c.slot - slot) > TOLERANCE_SLOTS) continue
             datesByZone.getOrPut(c.zone) { HashSet() }.add(c.date)
+            val t = typesByZone.getOrPut(c.zone) { HashMap() }
+            t[c.type] = (t[c.type] ?: 0) + 1
         }
         val observed = index.observedDays(day)
         val zones = datesByZone
             .filter { it.value.size >= MIN_DAYS }
-            .map { Recurrence(it.key, it.value.size, observed) }
+            .map { (zone, dates) ->
+                val types = typesByZone[zone].orEmpty().entries
+                    .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { CallType.ALL.indexOf(it.key) })
+                    .map { it.key to it.value }
+                Recurrence(zone, dates.size, observed, types)
+            }
             .sortedWith(compareByDescending<Recurrence> { it.days }.thenBy { it.zone.toIntOrNull() ?: Int.MAX_VALUE })
         return SlotRecurrences(day, slot, zones)
     }

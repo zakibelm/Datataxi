@@ -195,20 +195,40 @@ private fun NowCard(r: SlotRecurrences, isNow: Boolean) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
             } else {
+                Text(
+                    "Combien de ${dayName(r.dayOfWeek)}s la zone a eu un appel entre ${windowLabel(r.slot)}, et quels types d'appel.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 r.zones.forEach { z ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         WeightChip(z.weight)
-                        Text("Zone ${z.zone}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text(
-                            "${z.days} ${dayName(r.dayOfWeek)}s sur ${z.observedDays}",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Zone ${z.zone}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "appel ${z.days} ${dayName(r.dayOfWeek)}s sur ${z.observedDays}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                            Text(typesLabel(z.types), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/** « 06:50 et 07:20 » : la tranche à 10 minutes près, comme le calcul. */
+private fun windowLabel(slot: Int): String {
+    fun hm(m: Int): String { val x = ((m % 1440) + 1440) % 1440; return "%02d:%02d".format(x / 60, x % 60) }
+    val start = slot * RecurrenceBoard.SLOT_MINUTES
+    return "${hm(start - 10)} et ${hm(start + 20)}"
+}
+
+/** « Régulier 5 · Taxibus EXO 2 » : les 3 types les plus fréquents, avec le nombre d'appels. */
+private fun typesLabel(types: List<Pair<String, Int>>): String =
+    if (types.isEmpty()) "" else types.take(3).joinToString("  ·  ") { (t, n) -> "$t $n" }
 
 @Composable
 internal fun WeightChip(w: Weight) {
