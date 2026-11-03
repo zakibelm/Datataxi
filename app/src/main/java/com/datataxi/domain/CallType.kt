@@ -11,7 +11,6 @@ object CallType {
     const val TRANSPORT_ADAPTE = "Transport adapté"
     const val TAXIBUS = "Taxibus EXO"
     const val APP_MOBILE = "Application mobile"
-    const val ATTENTE = "Appel en attente"
     const val TERREBONNE = "Terrebonne"
     const val CISSS = "CISSS"
     const val DEVERROUILLAGE = "Déverrouillage"
@@ -25,7 +24,7 @@ object CallType {
 
     /** Ordre d'affichage quand deux types ont autant d'appels. */
     val KNOWN = listOf(
-        REGULIER, TRANSPORT_ADAPTE, TAXIBUS, APP_MOBILE, ATTENTE, TERREBONNE, CISSS,
+        REGULIER, TRANSPORT_ADAPTE, TAXIBUS, APP_MOBILE, TERREBONNE, CISSS,
         DEVERROUILLAGE, SURVOLTAGE, DEPANNEUR, STATION_VAN, ANIMAUX, FOURNISSEUR, DEUX_TETES, LIVRAISON,
     )
 
@@ -39,7 +38,8 @@ object CallType {
             "taxibus" in s -> TAXIBUS
             "transport adapt" in s -> TRANSPORT_ADAPTE
             APP.containsMatchIn(s) -> APP_MOBILE
-            "attente" in s -> ATTENTE
+            // « Appel en attente » n'est pas un type d'appel : c'est la façon dont l'appel a été pris.
+            "attente" in s -> null
             "terrebonne" in s -> TERREBONNE
             "cisss" in s -> CISSS
             "verrouillage" in s -> DEVERROUILLAGE
@@ -57,12 +57,11 @@ object CallType {
 
     /**
      * @param service le texte entre crochets (ou la colonne service_type), éventuellement plusieurs séparés par des virgules
-     * @param status current_status (« pris… » = appel en attente)
+     * @param status current_status (sans effet sur le type : un appel en attente garde son type)
      */
     fun of(service: String?, status: String?): Set<String> {
         val out = LinkedHashSet<String>()
         service.orEmpty().split(',').forEach { part -> one(part)?.let(out::add) }
-        if (status.orEmpty().trim().startsWith("pris")) out.add(ATTENTE)
         if (out.isEmpty()) out.add(REGULIER)
         return out
     }

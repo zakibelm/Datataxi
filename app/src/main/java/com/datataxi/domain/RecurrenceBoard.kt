@@ -76,11 +76,19 @@ object RecurrenceBoard {
         val date = runCatching { LocalDate.parse(e.date) }.getOrNull() ?: return@mapNotNull null
         val sec = EventDater.secondsOf(e.text) ?: return@mapNotNull null
         val d = EventDecoder.decode(e.text)
-        val zone = d.departureZone ?: return@mapNotNull null
         val status = d.status ?: return@mapNotNull null
         if (!status.startsWith("recu") && !status.startsWith("pris")) return@mapNotNull null
+        val zone = countedZone(status, d.departureZone, d.destinationZone) ?: return@mapNotNull null
         Call(date, sec, zone, d.vehicleId.orEmpty(), CallType.of(d.serviceType, status))
     }
+
+    /**
+     * Zone où l'appel compte. Un appel en attente (« a pris sur Zone 12 un Appel en attente vers le 1 »)
+     * compte pour la zone où il était déclaré, celle après « vers » (ici 1), pas pour la zone du
+     * chauffeur (12) : même règle que les archives du Google Sheet.
+     */
+    fun countedZone(status: String?, departure: String?, destination: String?): String? =
+        if (status.orEmpty().startsWith("pris") && destination != null) destination else departure
 
     /** Historique complet + journal de la tablette, sans compter deux fois le même appel. */
     fun merge(history: List<Call>, local: List<Call>): List<Call> {

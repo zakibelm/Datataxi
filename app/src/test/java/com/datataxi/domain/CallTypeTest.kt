@@ -12,7 +12,10 @@ class CallTypeTest {
         assertEquals(setOf(CallType.TRANSPORT_ADAPTE), CallType.of("Transport Adapté", "recu"))
         assertEquals(setOf(CallType.TAXIBUS), CallType.of("4 Pers Taxibus EXO", "recu"))
         assertEquals(setOf(CallType.APP_MOBILE), CallType.of("App Mobile", "historique_xlsx"))
-        assertEquals(setOf(CallType.ATTENTE), CallType.of(null, "pris_appel_en_attente"))
+        // Un appel en attente n'est pas un type : il garde le type de son service.
+        assertEquals(setOf(CallType.REGULIER), CallType.of(null, "pris_appel_en_attente"))
+        assertEquals(setOf(CallType.REGULIER), CallType.of("Appel en attente pris", "historique_xlsx"))
+        assertEquals(setOf(CallType.TRANSPORT_ADAPTE), CallType.of("Transport Adapté", "pris_appel_en_attente"))
         assertEquals(setOf(CallType.CISSS), CallType.of("CISSS", "recu"))
         assertEquals(setOf(CallType.FOURNISSEUR), CallType.of("Fournisseur Externe - CoopLaval", "recu"))
         assertEquals(setOf(CallType.ANIMAUX), CallType.of("Animal en cage", "recu"))

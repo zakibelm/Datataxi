@@ -81,7 +81,8 @@ class RecurrenceBoardTest {
                 JournalEntry("2026-10-26", "08:15:00 Véhicule 208 est NoLoad sur Zone 4"),
             )
         )
-        assertEquals(listOf("6", "12"), c.map { it.zone })
+        // L'appel en attente « sur Zone 12 ... vers le 1 » compte pour la zone 1, où il était déclaré.
+        assertEquals(listOf("6", "1"), c.map { it.zone })
         assertEquals("203", c[0].vehicle)
         assertTrue(c.all { it.slot == 49 })
     }

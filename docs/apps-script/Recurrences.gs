@@ -83,7 +83,7 @@ function calculer_(values, minDays) {
     return i;
   };
   const cDate = col('trip_date'), cTime = col('trip_time'), cZone = col('departure_zone');
-  const cStatus = col('current_status'), cTreatment = col('source_treatment');
+  const cStatus = col('current_status'), cTreatment = col('source_treatment'), cDest = col('destination_zone');
 
   // jour (1-7) -> tranche -> zone -> ensemble des dates
   const index = {};
@@ -96,8 +96,10 @@ function calculer_(values, minDays) {
     const row = values[r];
     const date = String(row[cDate] || '').trim();
     const time = String(row[cTime] || '').trim();
-    const zone = String(row[cZone] || '').trim();
     const status = String(row[cStatus] || '').trim();
+    // Appel en attente : compté pour la zone où il était déclaré (après « vers »), comme les archives.
+    const dest = String(row[cDest] || '').trim();
+    const zone = (/^pris/.test(status) && /^\d+$/.test(dest)) ? dest : String(row[cZone] || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}:\d{2}$/.test(time)) continue;
     if (!/^\d+$/.test(zone)) continue;
     if (status === 'historique_xlsx') {
@@ -211,14 +213,16 @@ function appels_(values) {
     return i;
   };
   const cDate = col('trip_date'), cTime = col('trip_time'), cZone = col('departure_zone');
-  const cStatus = col('current_status'), cTreatment = col('source_treatment');
+  const cStatus = col('current_status'), cTreatment = col('source_treatment'), cDest = col('destination_zone');
   const out = [];
   for (let r = 1; r < values.length; r++) {
     const row = values[r];
     const date = String(row[cDate] || '').trim();
     const time = String(row[cTime] || '').trim();
-    const zone = String(row[cZone] || '').trim();
     const status = String(row[cStatus] || '').trim();
+    // Appel en attente : compté pour la zone où il était déclaré (après « vers »), comme les archives.
+    const dest = String(row[cDest] || '').trim();
+    const zone = (/^pris/.test(status) && /^\d+$/.test(dest)) ? dest : String(row[cZone] || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}:\d{2}$/.test(time)) continue;
     if (!/^\d+$/.test(zone)) continue;
     if (status === 'historique_xlsx') {
