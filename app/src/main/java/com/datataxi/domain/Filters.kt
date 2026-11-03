@@ -5,20 +5,20 @@ import java.time.LocalDateTime
 /**
  * Filtres du tableau de bord.
  * @param zones zones gardées (vide = toutes)
- * @param type type d'appel gardé (null = tous)
+ * @param types types d'appel gardés (vide = tous) : un appel est gardé s'il a au moins un de ces types
  * @param startMinute heure de début en minutes depuis minuit (null = maintenant)
  * @param endMinute heure de fin en minutes depuis minuit (null = début + 2 h)
  */
 data class Filters(
     val zones: Set<String> = emptySet(),
-    val type: String? = null,
+    val types: Set<String> = emptySet(),
     val startMinute: Int? = null,
     val endMinute: Int? = null,
 ) {
-    fun keep(c: Call): Boolean = (zones.isEmpty() || c.zone in zones) && (type == null || c.type == type)
+    fun keep(c: Call): Boolean = (zones.isEmpty() || c.zone in zones) && (types.isEmpty() || c.types.any { it in types })
 
     val activeCount: Int
-        get() = (if (zones.isNotEmpty()) 1 else 0) + (if (type != null) 1 else 0) +
+        get() = (if (zones.isNotEmpty()) 1 else 0) + (if (types.isNotEmpty()) 1 else 0) +
             (if (startMinute != null || endMinute != null) 1 else 0)
 
     /** Début de la plage, arrondi à la tranche de 10 minutes. */

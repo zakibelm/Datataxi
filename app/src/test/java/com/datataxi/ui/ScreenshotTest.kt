@@ -51,7 +51,7 @@ abstract class ScreenshotBase(device: DeviceConfig) {
             for (zone in listOf("1", "6")) {
                 var m = 6 * 60 + rnd.nextInt(30)
                 while (m < 20 * 60) {
-                    out.add(Call(day, m * 60, zone, (vehicle++).toString(), if (rnd.nextInt(5) == 0) CallType.TRANSPORT_ADAPTE else CallType.REGULIER))
+                    out.add(Call(day, m * 60, zone, (vehicle++).toString(), setOf(if (rnd.nextInt(5) == 0) CallType.TRANSPORT_ADAPTE else CallType.REGULIER)))
                     m += if (zone == "1") 10 + rnd.nextInt(20) else 20 + rnd.nextInt(30)
                 }
             }
@@ -60,7 +60,7 @@ abstract class ScreenshotBase(device: DeviceConfig) {
             habits.forEach { (h, type) ->
                 val (zone, minute, chance) = h
                 if (rnd.nextDouble() < chance * maturity) {
-                    out.add(Call(day, (minute + rnd.nextInt(-8, 9)) * 60, zone, (vehicle++).toString(), type))
+                    out.add(Call(day, (minute + rnd.nextInt(-8, 9)) * 60, zone, (vehicle++).toString(), setOf(type)))
                 }
             }
             day = day.plusDays(1)
@@ -105,7 +105,7 @@ class PhoneScreenshotTest : ScreenshotBase(DeviceConfig.PIXEL_5) {
 
     @Test
     fun filtresEtConfianceParJour() = shot(
-        Filters(zones = setOf("1", "12", "41"), type = CallType.TRANSPORT_ADAPTE, startMinute = 7 * 60, endMinute = 10 * 60),
+        Filters(zones = setOf("1", "12", "41"), types = setOf(CallType.TRANSPORT_ADAPTE, CallType.TAXIBUS), startMinute = 7 * 60, endMinute = 10 * 60),
         filtersOpen = true,
         period = Reliability.Period.DAY,
     )

@@ -29,11 +29,12 @@ class FiltersTest {
 
     @Test
     fun keepsChosenZonesAndType() {
-        val c = Call(LocalDate.parse("2026-11-02"), 30000, "12", "1", CallType.TRANSPORT_ADAPTE)
+        val c = Call(LocalDate.parse("2026-11-02"), 30000, "12", "1", setOf(CallType.TRANSPORT_ADAPTE, CallType.TERREBONNE))
         assertTrue(Filters().keep(c))
-        assertTrue(Filters(zones = setOf("12", "41"), type = CallType.TRANSPORT_ADAPTE).keep(c))
+        assertTrue(Filters(zones = setOf("12", "41"), types = setOf(CallType.TRANSPORT_ADAPTE)).keep(c))
+        assertTrue(Filters(types = setOf(CallType.TAXIBUS, CallType.TERREBONNE)).keep(c))
         assertFalse(Filters(zones = setOf("41")).keep(c))
-        assertFalse(Filters(type = CallType.TAXIBUS).keep(c))
+        assertFalse(Filters(types = setOf(CallType.TAXIBUS, CallType.CISSS)).keep(c))
         assertEquals(2, Filters(zones = setOf("1"), startMinute = 0).activeCount)
     }
 }

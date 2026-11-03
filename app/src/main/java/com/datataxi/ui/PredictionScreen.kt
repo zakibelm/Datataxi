@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.datataxi.data.HistoryStore
 import com.datataxi.data.JournalStore
 import com.datataxi.domain.Call
+import com.datataxi.domain.CallType
 import com.datataxi.domain.DayReliability
 import com.datataxi.domain.Filters
 import com.datataxi.domain.RecurrenceBoard
@@ -142,7 +143,8 @@ fun RecurrencesContent(
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.toIntOrNull() ?: Int.MAX_VALUE })
             .map { it.key }
     }
-    val filteredIndex = remember(calls, filters.zones, filters.type) {
+    val callTypes = remember(calls) { CallType.present(calls) }
+    val filteredIndex = remember(calls, filters.zones, filters.types) {
         RecurrenceBoard.Index(calls.filter { filters.keep(it) }, observedFrom = calls)
     }
     val start = filters.start(now)
@@ -168,7 +170,8 @@ fun RecurrencesContent(
 
         FiltersCard(
             filters = filters,
-            zones = zonesByActivity.take(20),
+            zones = zonesByActivity,
+            types = callTypes,
             initiallyOpen = initialFiltersOpen,
             onChange = { filters = it },
         )

@@ -4,13 +4,13 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
-/** Un appel : jour, heure (secondes depuis minuit), zone de départ, véhicule, type d'appel. */
+/** Un appel : jour, heure (secondes depuis minuit), zone de départ, véhicule, types d'appel. */
 data class Call(
     val date: LocalDate,
     val second: Int,
     val zone: String,
     val vehicle: String,
-    val type: String = CallType.REGULIER,
+    val types: Set<String> = setOf(CallType.REGULIER),
 ) {
     val slot: Int get() = second / 60 / RecurrenceBoard.SLOT_MINUTES
     /** Même appel vu par l'historique du Google Sheet et par le journal de la tablette. */
@@ -111,14 +111,14 @@ object RecurrenceBoard {
             if (kotlin.math.abs(c.slot - slot) > TOLERANCE_SLOTS) continue
             datesByZone.getOrPut(c.zone) { HashSet() }.add(c.date)
             val t = typesByZone.getOrPut(c.zone) { HashMap() }
-            t[c.type] = (t[c.type] ?: 0) + 1
+            c.types.forEach { type -> t[type] = (t[type] ?: 0) + 1 }
         }
         val observed = index.observedDays(day)
         val zones = datesByZone
             .filter { it.value.size >= MIN_DAYS }
             .map { (zone, dates) ->
                 val types = typesByZone[zone].orEmpty().entries
-                    .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { CallType.ALL.indexOf(it.key) })
+                    .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { CallType.KNOWN.indexOf(it.key).let { i -> if (i < 0) 99 else i } })
                     .map { it.key to it.value }
                 Recurrence(zone, dates.size, observed, types)
             }

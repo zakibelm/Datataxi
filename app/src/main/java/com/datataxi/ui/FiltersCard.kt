@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.datataxi.domain.CallType
 import com.datataxi.domain.Filters
 
 /** Heures proposées pour le début et la fin de la plage, toutes les 30 minutes. */
@@ -42,6 +41,7 @@ private fun hhmm(minutes: Int) = "%02d:%02d".format(minutes / 60, minutes % 60)
 fun FiltersCard(
     filters: Filters,
     zones: List<String>,
+    types: List<String>,
     initiallyOpen: Boolean,
     onChange: (Filters) -> Unit,
 ) {
@@ -59,7 +59,7 @@ fun FiltersCard(
             }
             if (open) {
 
-                Text("Zones", style = MaterialTheme.typography.labelLarge)
+                Text("Zones (touche plusieurs zones pour les combiner)", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
                         selected = filters.zones.isEmpty(),
@@ -76,17 +76,17 @@ fun FiltersCard(
                     }
                 }
 
-                Text("Type d'appel", style = MaterialTheme.typography.labelLarge)
+                Text("Types d'appel (touche plusieurs types pour les combiner)", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
-                        selected = filters.type == null,
-                        onClick = { onChange(filters.copy(type = null)) },
+                        selected = filters.types.isEmpty(),
+                        onClick = { onChange(filters.copy(types = emptySet())) },
                         label = { Text("Tous") },
                     )
-                    CallType.ALL.forEach { t ->
+                    types.forEach { t ->
                         FilterChip(
-                            selected = filters.type == t,
-                            onClick = { onChange(filters.copy(type = if (filters.type == t) null else t)) },
+                            selected = t in filters.types,
+                            onClick = { onChange(filters.copy(types = if (t in filters.types) filters.types - t else filters.types + t)) },
                             label = { Text(t) },
                         )
                     }
@@ -133,7 +133,7 @@ private fun HourPicker(label: String, value: String, emptyChoice: String, onPick
 
 private fun summary(f: Filters): String {
     val zones = if (f.zones.isEmpty()) "toutes les zones" else "zones " + f.zones.sortedBy { it.toIntOrNull() ?: Int.MAX_VALUE }.joinToString(", ")
-    val type = f.type ?: "tous les types"
+    val type = if (f.types.isEmpty()) "tous les types" else f.types.joinToString(", ")
     val start = f.startMinute?.let(::hhmm) ?: "maintenant"
     val end = f.endMinute?.let(::hhmm) ?: "+ 2 h"
     return "$zones · $type · $start → $end"
