@@ -105,6 +105,7 @@ fun DiagnosticScreen(scrollable: Boolean = true) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("DataTaxi", style = MaterialTheme.typography.headlineMedium)
+        Text("Version ${com.datataxi.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelMedium)
         Text(
             "Lecture de l'écran de répartition. Fais l'activation et les essais à l'arrêt, jamais en roulant.",
             style = MaterialTheme.typography.bodyMedium,

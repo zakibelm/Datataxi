@@ -53,3 +53,13 @@ jobs:
           name: DataTaxi - dernière version de test
           prerelease: true
           files: DataTaxi-debug.apk
+
+      # Version de la branche de travail : même lien direct, sans zip et sans compte GitHub.
+      - name: Publish branch APK as a test release
+        if: github.ref != 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: version-de-test
+          name: DataTaxi - version en cours de test (branche de travail)
+          prerelease: true
+          files: DataTaxi-debug.apk

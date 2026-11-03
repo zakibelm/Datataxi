@@ -160,6 +160,7 @@ fun RecurrencesContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Récurrences par zone", style = MaterialTheme.typography.headlineMedium)
+        Text("DataTaxi version ${com.datataxi.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall)
         Text(
             "Maintenant : ${dayName(now.dayOfWeek)} ${"%02d:%02d".format(now.hour, now.minute)}",
             style = MaterialTheme.typography.bodyMedium,
