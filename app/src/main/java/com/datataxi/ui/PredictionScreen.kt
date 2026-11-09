@@ -213,7 +213,7 @@ private fun NowCard(r: SlotRecurrences, isNow: Boolean) {
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             }
-                            Text(typesLabel(z.types), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(typesLabel(z.types), style = MaterialTheme.typography.bodyMedium, color = Color(0xFFFF8A80))
                         }
                     }
                 }
