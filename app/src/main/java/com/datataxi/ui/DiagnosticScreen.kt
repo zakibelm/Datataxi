@@ -293,7 +293,7 @@ fun DiagnosticScreen(scrollable: Boolean = true) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Envoi automatique (n8n)", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Les nouvelles lignes sont envoyées au webhook toutes les heures (quand il y a du réseau). Les lignes déjà envoyées ne sont jamais renvoyées.",
+                    "Les nouvelles lignes sont envoyées au webhook quelques secondes après leur capture (quand il y a du réseau), avec un rattrapage toutes les 15 minutes. Les lignes déjà envoyées ne sont jamais renvoyées.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
@@ -311,7 +311,7 @@ fun DiagnosticScreen(scrollable: Boolean = true) {
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    if (syncEnabled) "Envoi horaire : ACTIVÉ" else "Envoi horaire : désactivé",
+                    if (syncEnabled) "Envoi quasi direct : ACTIVÉ" else "Envoi quasi direct : désactivé",
                     style = MaterialTheme.typography.labelMedium,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -320,7 +320,7 @@ fun DiagnosticScreen(scrollable: Boolean = true) {
                             SyncManager.save(context, syncUrl, syncToken)
                             SyncManager.enable(context)
                             syncEnabled = true
-                            syncStatus = "Réglages enregistrés, envoi horaire activé."
+                            syncStatus = "Réglages enregistrés, envoi quasi direct activé."
                         },
                         enabled = syncUrl.startsWith("https://"),
                     ) { Text("Enregistrer et activer") }

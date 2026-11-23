@@ -15,7 +15,10 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class SyncResult(val ok: Boolean, val message: String)
 
@@ -28,6 +31,17 @@ object SyncManager {
     private const val PREFS = "datataxi_sync"
     private const val WORK_NAME = "datataxi_hourly_sync"
     private const val BATCH = 300
+
+    /** Envoi quasi direct : délai de regroupement après une capture, puis nouvel essai en cas d'échec. */
+    private const val PUSH_DELAY_SECONDS = 15L
+    private const val RETRY_DELAY_SECONDS = 60L
+
+    /** Un seul envoi à la fois (l'envoi direct et le worker de secours ne doivent pas se croiser). */
+    private val sendLock = Any()
+    private val pushPending = AtomicBoolean(false)
+    private val pusher: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "datataxi-push").apply { isDaemon = true }
+    }
 
     private fun prefs(c: Context) =
         c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -61,7 +75,8 @@ object SyncManager {
 
     fun enable(c: Context) {
         prefs(c).edit().putBoolean("enabled", true).apply()
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
+        // Filet de sécurité : l'envoi direct (pushSoon) fait le gros du travail, ce cycle rattrape les ratés.
+        val request = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(c.applicationContext)
@@ -73,20 +88,35 @@ object SyncManager {
         WorkManager.getInstance(c.applicationContext).cancelUniqueWork(WORK_NAME)
     }
 
+    /**
+     * Demande un envoi dans quelques secondes (regroupe les captures rapprochées).
+     * Sans effet si l'envoi n'est pas activé. Peut être appelé depuis le fil principal.
+     */
+    fun pushSoon(c: Context, delaySeconds: Long = PUSH_DELAY_SECONDS) {
+        val ctx = c.applicationContext
+        if (!enabled(ctx)) return
+        if (!pushPending.compareAndSet(false, true)) return
+        pusher.schedule(Runnable {
+            pushPending.set(false)
+            val result = sendNow(ctx)
+            if (!result.ok) pushSoon(ctx, RETRY_DELAY_SECONDS)
+        }, delaySeconds, TimeUnit.SECONDS)
+    }
+
     /** Envoie les lignes pas encore envoyées. À appeler hors du fil principal. */
-    fun sendNow(c: Context): SyncResult {
+    fun sendNow(c: Context): SyncResult = synchronized(sendLock) {
         val ctx = c.applicationContext
         JournalStore.init(ctx)
         val result = try {
             doSend(ctx)
         } catch (e: Exception) {
-            SyncResult(false, "Erreur réseau (${e.javaClass.simpleName}). Nouvel essai à la prochaine heure.")
+            SyncResult(false, "Erreur réseau (${e.javaClass.simpleName}). Nouvel essai dans une minute.")
         }
         prefs(ctx).edit()
             .putLong("last_try", System.currentTimeMillis())
             .putString("last_status", result.message)
             .apply()
-        return result
+        result
     }
 
     private fun doSend(ctx: Context): SyncResult {
@@ -137,6 +167,6 @@ class SyncWorker(context: Context, params: WorkerParameters) : Worker(context, p
     override fun doWork(): Result {
         SyncManager.sendNow(applicationContext)
         if (HistoryStore.isStale(applicationContext)) HistoryStore.refresh(applicationContext)
-        return Result.success() // l'échec est noté ; le prochain cycle horaire réessaie
+        return Result.success() // l'échec est noté ; le prochain cycle (15 min) ou la prochaine capture réessaie
     }
 }

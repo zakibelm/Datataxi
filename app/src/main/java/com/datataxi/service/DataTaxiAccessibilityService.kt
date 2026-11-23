@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.datataxi.data.CaptureStore
 import com.datataxi.data.CrashLog
 import com.datataxi.data.JournalStore
+import com.datataxi.data.SyncManager
 import com.datataxi.domain.BackfillPhase
 import com.datataxi.domain.BackfillState
 import com.datataxi.domain.CaptureSnapshot
@@ -37,6 +38,8 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         CaptureStore.init(applicationContext)
         JournalStore.init(applicationContext)
         CaptureStore.setServiceConnected(true)
+        // Applique le nouveau rythme de rattrapage si l'envoi était déjà activé.
+        if (SyncManager.enabled(applicationContext)) SyncManager.enable(applicationContext)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -71,6 +74,8 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         )
         val events = JournalParser.eventLines(lines)
         val added = JournalStore.addAll(LocalDateTime.now(), events)
+        // Envoi quasi direct : une nouvelle ligne part vers le serveur dans quelques secondes.
+        if (added > 0) SyncManager.pushSoon(applicationContext)
         return ReadResult(root, events, added)
     }
 
