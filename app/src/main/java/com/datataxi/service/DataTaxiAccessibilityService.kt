@@ -3,10 +3,12 @@ package com.datataxi.service
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.os.Handler
+import android.os.PowerManager
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.datataxi.data.CaptureStore
+import com.datataxi.data.CoverageStore
 import com.datataxi.data.CrashLog
 import com.datataxi.data.JournalStore
 import com.datataxi.data.SyncManager
@@ -22,6 +24,12 @@ class DataTaxiAccessibilityService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val captureRunnable = Runnable { captureNow() }
     private val backfillRunnable = Runnable { backfillStep() }
+    private val coverageRunnable = object : Runnable {
+        override fun run() {
+            coverageTick()
+            handler.postDelayed(this, COVERAGE_TICK_MS)
+        }
+    }
 
     private var lastSignature: String? = null
     private var unchangedSteps = 0
@@ -40,6 +48,22 @@ class DataTaxiAccessibilityService : AccessibilityService() {
         CaptureStore.setServiceConnected(true)
         // Applique le nouveau rythme de rattrapage si l'envoi était déjà activé.
         if (SyncManager.enabled(applicationContext)) SyncManager.enable(applicationContext)
+        handler.removeCallbacks(coverageRunnable)
+        handler.postDelayed(coverageRunnable, COVERAGE_TICK_MS)
+    }
+
+    /**
+     * Preuve de couverture : toutes les minutes, si l'écran est allumé et que Fraxion est au premier plan,
+     * la case de 5 minutes en cours est marquée « lisible ». Sans cela, une heure sans appel ne se distingue
+     * pas d'une heure où la tablette ne lisait rien.
+     */
+    private fun coverageTick() {
+        val pm = getSystemService(POWER_SERVICE) as? PowerManager
+        if (pm?.isInteractive != true) return
+        val target = CaptureStore.targetPackage.value ?: return
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() != target) return
+        if (CoverageStore.mark(applicationContext)) SyncManager.pushSoon(applicationContext)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -72,6 +96,7 @@ class DataTaxiAccessibilityService : AccessibilityService() {
                 lines = lines,
             )
         )
+        CoverageStore.mark(applicationContext)
         val events = JournalParser.eventLines(lines)
         val added = JournalStore.addAll(LocalDateTime.now(), events)
         // Envoi quasi direct : une nouvelle ligne part vers le serveur dans quelques secondes.
@@ -149,14 +174,20 @@ class DataTaxiAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        handler.removeCallbacks(coverageRunnable)
         CaptureStore.setServiceConnected(false)
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(coverageRunnable)
         handler.removeCallbacks(captureRunnable)
         handler.removeCallbacks(backfillRunnable)
         CaptureStore.setServiceConnected(false)
         super.onDestroy()
+    }
+
+    private companion object {
+        const val COVERAGE_TICK_MS = 60_000L
     }
 }
