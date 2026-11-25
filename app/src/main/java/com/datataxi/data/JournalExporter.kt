@@ -76,30 +76,6 @@ object JournalExporter {
         )
     }
 
-    /** Type de service réservé : ligne de couverture (écran lisible), jamais un appel. */
-    const val COVERAGE_TYPE = "__couverture__"
-
-    /** Case de 5 minutes « écran de Fraxion lisible », mêmes colonnes qu'une course (aucune zone ni appel). */
-    fun coverageRecord(binStart: String): Map<String, String> {
-        val date = binStart.substring(0, 10)
-        val time = binStart.substring(11, 19)
-        return linkedMapOf(
-            "trip_id" to sha("COUV|$binStart"),
-            "trip_date" to date,
-            "trip_time" to time,
-            "observed_at" to binStart,
-            "departure_zone" to "",
-            "departure_address" to "",
-            "destination_zone" to "",
-            "destination_address" to "",
-            "service_type" to COVERAGE_TYPE,
-            "vehicle_id" to "",
-            "current_status" to "couvert",
-            "confidence_score" to "",
-            "raw_text" to "COUVERTURE 5 min",
-        )
-    }
-
     /** Journal technique lisible (lignes brutes + statistiques de couverture). */
     fun buildJournalText(entries: List<JournalEntry>): String = buildString {
         val sorted = ordered(entries)

@@ -124,30 +124,6 @@ object SyncManager {
         if (!address.startsWith("https://")) {
             return SyncResult(false, "Adresse du webhook absente ou non https.")
         }
-        val events = sendEvents(ctx, address)
-        // La couverture part après les appels, et son échec ne bloque jamais l'envoi des appels.
-        val coverage = sendCoverage(ctx, address)
-        return if (coverage.isEmpty()) events else SyncResult(events.ok, events.message + " " + coverage)
-    }
-
-    private fun post(address: String, ctx: Context, rows: JSONArray): Int {
-        val body = JSONObject().put("token", token(ctx)).put("rows", rows).toString()
-        val conn = (URL(address).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 30000
-            doOutput = true
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        }
-        try {
-            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            return conn.responseCode
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    private fun sendEvents(ctx: Context, address: String): SyncResult {
         val all = JournalStore.entries.value
         var sent = sentCount(ctx).coerceAtMost(all.size)
         if (sent >= all.size) return SyncResult(true, "Rien de nouveau à envoyer.")
@@ -161,46 +137,29 @@ object SyncManager {
                 JournalExporter.record(e).forEach { (k, v) -> o.put(k, v) }
                 rows.put(o)
             }
-            val code = post(address, ctx, rows)
-            if (code !in 200..299) {
-                return SyncResult(false, "Le serveur a répondu $code. $total lignes envoyées avant l'erreur.")
+            val body = JSONObject().put("token", token(ctx)).put("rows", rows).toString()
+
+            val conn = (URL(address).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 15000
+                readTimeout = 30000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            try {
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    return SyncResult(false, "Le serveur a répondu $code. $total lignes envoyées avant l'erreur.")
+                }
+            } finally {
+                conn.disconnect()
             }
             sent += chunk.size
             total += chunk.size
             prefs(ctx).edit().putInt("sent_count", sent).apply()
         }
         return SyncResult(true, "$total nouvelles lignes envoyées.")
-    }
-
-    /** Envoie les cases de couverture en attente ; renvoie un court message, vide s'il n'y avait rien. */
-    private fun sendCoverage(ctx: Context, address: String): String {
-        val pending = CoverageStore.pending(ctx)
-        if (pending.isEmpty()) return ""
-        val p = prefs(ctx)
-        val retryAfter = p.getLong("coverage_retry_after", 0L)
-        if (System.currentTimeMillis() < retryAfter) return ""
-        return try {
-            var sentBins = 0
-            pending.chunked(BATCH).forEach { chunk ->
-                val rows = JSONArray()
-                chunk.forEach { bin ->
-                    val o = JSONObject()
-                    JournalExporter.coverageRecord(bin).forEach { (k, v) -> o.put(k, v) }
-                    rows.put(o)
-                }
-                val code = post(address, ctx, rows)
-                if (code !in 200..299) {
-                    p.edit().putLong("coverage_retry_after", System.currentTimeMillis() + 10 * 60_000L).apply()
-                    return "Couverture : le serveur a répondu $code, nouvel essai dans 10 min."
-                }
-                CoverageStore.acknowledge(ctx, chunk)
-                sentBins += chunk.size
-            }
-            "Couverture : $sentBins cases envoyées."
-        } catch (e: Exception) {
-            p.edit().putLong("coverage_retry_after", System.currentTimeMillis() + 10 * 60_000L).apply()
-            "Couverture : erreur réseau, nouvel essai dans 10 min."
-        }
     }
 }
 
